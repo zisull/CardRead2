@@ -1,0 +1,27 @@
+[project]
+name = "cardread"
+version = "0.0.1"
+description = "紫苏小说阅读器 - 本地电子书阅读工具"
+license = "GPL-3.0-only"
+requires-python = ">=3.10"
+dependencies = [
+    "pywebview>=6.0",
+    "pythonnet>=3.0",
+    "confull",
+    "chardet",
+    "loguru",
+    "ebooklib",
+    "beautifulsoup4",
+    "lxml",
+    "mobi",
+    "mistune",
+    "pypinyin",
+]
+
+[project.scripts]
+cardread = "src.web.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-v --tb=short"

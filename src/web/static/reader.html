@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Cardread Pro Reader</title>
+    <link rel="stylesheet" href="vendor/highlight.styles/default.min.css">
+    <script src="utils.js" defer></script>
+    <script src="vendor/highlight.min.js" defer></script>
+    <script src="vendor/languages/python.min.js" defer></script>
+    <script src="vendor/languages/javascript.min.js" defer></script>
+    <script src="vendor/languages/bash.min.js" defer></script>
+    <script src="vendor/languages/json.min.js" defer></script>
+    <script src="vendor/languages/html.min.js" defer></script>
+    <script src="vendor/languages/css.min.js" defer></script>
+    <script src="vendor/languages/markdown.min.js" defer></script>
+    <link rel="stylesheet" href="reader.css">
+</head>
+<body>
+    <div class="card">
+        <div class="title-bar" id="titleBar">
+            <span class="book-title" id="bookTitle">📖 阅读</span>
+            <span style="flex:1"></span>
+            <span class="theme-toggle" id="themeToggle" onclick="toggleDarkLight()" title="切换深浅主题"></span>
+            <button class="win-btn" onclick="toggleSearch()" title="检索文字 (Ctrl+F)"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+            <button class="win-btn" onclick="toggleBookmarks()" id="bmBtn" title="书签"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></button>
+            <button class="win-btn" onclick="toggleAlwaysOnTop()" id="topBtn" title="置顶窗口"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg></button>
+            <button class="win-btn" onclick="minimizeWindow()" title="最小化">─</button>
+            <button class="win-btn" id="maxBtn" onclick="toggleMaximize()" title="最大化">□</button>
+            <button class="win-btn close-btn" onclick="closeReader()" title="关闭">✕</button>
+        </div>
+        <div class="content-area" id="readerContent">
+            <div class="loading-overlay" id="loadingOverlay">
+                <div class="loading-spinner"></div>
+                <div class="loading-text" id="loadingText">正在加载书籍...</div>
+                <div class="loading-bar-wrap"><div class="loading-bar" id="loadingBar"></div></div>
+            </div>
+            <div class="text" id="contentArea"></div>
+        </div>
+        <div class="bottom-bar">
+            <span id="timeInfo"></span>
+            <span class="spacer"></span>
+            <span style="margin-left:4px;display:none;" id="progressInfo">0%</span>
+            <button class="nav-btn" id="prevBtn" onclick="prevChapter()" title="上一章">‹</button>
+            <span id="chapterInfo" onclick="toggleToc()" style="cursor:pointer;" title="点击打开/关闭目录"></span>
+            <button class="nav-btn" id="nextBtn" onclick="nextChapter()" title="下一章">›</button>
+        </div>
+    </div>
+
+    <div class="side-panel" id="tocPanel">
+        <div class="side-panel-header">
+            <span class="panel-title">📋 目录</span>
+            <span class="panel-count" id="tocCount">0章</span>
+            <button class="win-btn" onclick="toggleToc()">✕</button>
+        </div>
+        <div class="toc-search"><input type="text" id="tocSearch" placeholder="搜索章节..." oninput="filterToc()"></div>
+        <div class="panel-list" id="tocList"></div>
+    </div>
+
+    <div class="side-panel" id="bmPanel">
+        <div class="side-panel-header">
+            <span class="panel-title">🔖 书签</span>
+            <span class="panel-count" id="bmCount">0个</span>
+            <button class="win-btn" onclick="toggleBookmarks()">✕</button>
+        </div>
+        <button class="bm-add-btn" onclick="addBookmark()">＋ 添加当前书签</button>
+        <div class="bm-toolbar" id="bmToolbar" style="display:none;">
+            <select id="bmSortSelect" onchange="sortBookmarks()">
+                <option value="time-desc">时间倒序</option>
+                <option value="time-asc">时间正序</option>
+                <option value="chapter-asc">章节顺序</option>
+            </select>
+            <button class="bm-toolbar-btn" onclick="toggleSelectAllBookmarks()">全选</button>
+            <button class="bm-toolbar-btn danger" onclick="batchDeleteBookmarks()">批量删除</button>
+        </div>
+        <div class="panel-list" id="bmList"></div>
+    </div>
+
+    <div class="search-bar" id="searchBar">
+        <div class="search-row">
+            <input type="text" id="searchInput" placeholder="输入搜索内容..." oninput="doSearch()" onkeydown="if(event.key==='Enter'){event.preventDefault();if(event.shiftKey)searchPrev();else searchNext();}">
+            <span class="search-count" id="searchCount"></span>
+            <button class="search-btn" onclick="searchPrev()" title="上一个">▲</button>
+            <button class="search-btn" onclick="searchNext()" title="下一个">▼</button>
+            <button class="search-btn" onclick="closeSearch()" title="关闭">✕</button>
+        </div>
+        <div class="search-row">
+            <label class="search-toggle"><input type="checkbox" id="searchFullText" checked onchange="doSearch()"> 全文检索</label>
+            <span class="search-hint" id="searchHint"></span>
+        </div>
+        <div class="search-results" id="searchResults"></div>
+    </div>
+
+    <div class="auto-read-badge" id="autoReadBadge">🤖 自动阅读 | Esc停止</div>
+
+    <div class="last-read-btn" id="lastReadBtn"><span onclick="restoreLastReadPos()">↩ 返回上次位置</span><span class="last-read-close" onclick="dismissLastReadBtn(event)" title="关闭">×</span></div>
+
+    <div class="toast" id="toast"></div>
+    <div class="resize-handle" id="resizeHandle"></div>
+    <div class="ctx-menu" id="ctxMenu">
+        <div class="ctx-item" id="ctxCopy" onclick="ctxAction('copy')" style="display:none"><span class="ctx-icon">📋</span><span>复制</span></div>
+        <div class="ctx-sep" id="ctxCopySep" style="display:none"></div>
+        <div class="ctx-item" onclick="ctxAction('toc')"><span class="ctx-icon">📑</span><span>目录</span></div>
+        <div class="ctx-item" onclick="ctxAction('bm')"><span class="ctx-icon">🔖</span><span>书签</span></div>
+        <div class="ctx-item" onclick="ctxAction('search')"><span class="ctx-icon">🔍</span><span>检索文字</span></div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item" onclick="ctxAction('bookshelf')"><span class="ctx-icon">📚</span><span>打开书架</span></div>
+        <div class="ctx-item" onclick="ctxAction('autoread')"><span class="ctx-icon">▶</span><span>自动阅读</span></div>
+        <div class="ctx-sep"></div>
+        <div class="ctx-item" onclick="ctxAction('reset')"><span class="ctx-icon">⬜</span><span>重置大小</span></div>
+    </div>
+    <div class="img-lightbox" id="imgLightbox" onclick="if(event.target===this)closeLightbox()">
+        <img id="lbImg" src="">
+        <button class="lb-close" onclick="closeLightbox()">✕</button>
+    </div>
+    <script src="reader.js" defer></script>
+</body>
+</html>

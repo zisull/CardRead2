@@ -1,0 +1,29 @@
+# CardRead 紫苏小说阅读器 - 运行时依赖
+# 使用方法: pip install -r requirements.txt
+
+# Web版GUI框架
+pywebview>=6.0
+pythonnet>=3.0
+
+# 配置文件管理
+confull
+
+# 编码检测
+chardet
+
+# 日志
+loguru
+
+# EPUB解析
+ebooklib
+beautifulsoup4
+lxml
+
+# MOBI解析（KindleUnpack封装版）
+mobi
+
+# Markdown解析
+mistune
+
+# 拼音转换（书架封面字符）
+pypinyin

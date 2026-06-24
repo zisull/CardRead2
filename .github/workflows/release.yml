@@ -1,0 +1,226 @@
+name: Build & Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: Windows
+            artifact: CardRead2-Windows-x64.exe
+            package: CardRead2-Windows-x64.zip
+          - os: ubuntu-22.04
+            platform: Linux
+            artifact: CardRead2-Linux-x64
+            package: CardRead2-Linux-x64.tar.gz
+          - os: macos-13
+            platform: macOS-x64
+            artifact: CardRead2-macOS-x64
+            package: CardRead2-macOS-x64.zip
+          - os: macos-14
+            platform: macOS-arm64
+            artifact: CardRead2-macOS-arm64
+            package: CardRead2-macOS-arm64.zip
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    name: Build ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.0-dev libgtk-3-dev patchelf
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install nuitka ordered-set zstandard
+          pip install confull chardet loguru ebooklib beautifulsoup4 lxml mobi mistune pypinyin
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            pip install pythonnet pywebview
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            pip install pywebview pyobjc-core pyobjc-framework-Cocoa pyobjc-framework-WebKit
+          else
+            pip install pywebview
+          fi
+
+      - name: Build with Nuitka (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          python -m nuitka `
+            --standalone `
+            --onefile `
+            --jobs=4 `
+            --output-dir=dist `
+            --output-filename=CardRead2-Windows-x64.exe `
+            --windows-icon-from-ico=src/icon.ico `
+            --windows-console-mode=disable `
+            --no-prefer-source-code `
+            --include-package=src `
+            --include-package=confull `
+            --include-package=chardet `
+            --include-package=loguru `
+            --include-package=ebooklib `
+            --include-package=bs4 `
+            --include-package=lxml `
+            --include-package=mobi `
+            --include-package=mistune `
+            --include-package=pypinyin `
+            --include-package-data=pypinyin `
+            --include-module=clr `
+            --include-package=clr_loader `
+            --include-package=pythonnet `
+            --include-package=bottle `
+            --include-package=proxy_tools `
+            --include-package=webview `
+            --include-module=webview.platforms.winforms `
+            --include-module=webview.platforms.edgechromium `
+            --include-package-data=pythonnet `
+            --include-package-data=clr_loader `
+            --include-package-data=webview `
+            --include-data-dir=src/web/static=static `
+            --include-data-files=src/icon.ico=icon.ico `
+            --nofollow-import-to=tkinter `
+            --nofollow-import-to=unittest `
+            --nofollow-import-to=test `
+            --disable-plugin=pywebview `
+            --assume-yes-for-downloads `
+            --remove-output `
+            src/web/main.py
+
+      - name: Build with Nuitka (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          python -m nuitka \
+            --standalone \
+            --onefile \
+            --jobs=4 \
+            --output-dir=dist \
+            --output-filename=CardRead2-Linux-x64 \
+            --no-prefer-source-code \
+            --include-package=src \
+            --include-package=confull \
+            --include-package=chardet \
+            --include-package=loguru \
+            --include-package=ebooklib \
+            --include-package=bs4 \
+            --include-package=lxml \
+            --include-package=mobi \
+            --include-package=mistune \
+            --include-package=pypinyin \
+            --include-package-data=pypinyin \
+            --include-package=bottle \
+            --include-package=proxy_tools \
+            --include-package=webview \
+            --include-module=webview.platforms.gtk \
+            --include-package-data=webview \
+            --include-data-dir=src/web/static=static \
+            --include-data-files=src/icon.ico=icon.ico \
+            --nofollow-import-to=tkinter \
+            --nofollow-import-to=unittest \
+            --nofollow-import-to=test \
+            --disable-plugin=pywebview \
+            --assume-yes-for-downloads \
+            --remove-output \
+            src/web/main.py
+
+      - name: Build with Nuitka (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          python -m nuitka \
+            --standalone \
+            --onefile \
+            --jobs=4 \
+            --output-dir=dist \
+            --output-filename=${{ matrix.artifact }} \
+            --macos-create-app-bundle \
+            --no-prefer-source-code \
+            --include-package=src \
+            --include-package=confull \
+            --include-package=chardet \
+            --include-package=loguru \
+            --include-package=ebooklib \
+            --include-package=bs4 \
+            --include-package=lxml \
+            --include-package=mobi \
+            --include-package=mistune \
+            --include-package=pypinyin \
+            --include-package-data=pypinyin \
+            --include-package=bottle \
+            --include-package=proxy_tools \
+            --include-package=webview \
+            --include-module=webview.platforms.cocoa \
+            --include-package-data=webview \
+            --include-data-dir=src/web/static=static \
+            --include-data-files=src/icon.ico=icon.ico \
+            --nofollow-import-to=tkinter \
+            --nofollow-import-to=unittest \
+            --nofollow-import-to=test \
+            --disable-plugin=pywebview \
+            --assume-yes-for-downloads \
+            --remove-output \
+            src/web/main.py
+
+      - name: Package artifacts
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            powershell -Command "Compress-Archive -Path dist/CardRead2-Windows-x64.exe -DestinationPath dist/CardRead2-Windows-x64.zip -Force"
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            tar -czf dist/CardRead2-Linux-x64.tar.gz -C dist CardRead2-Linux-x64
+          else
+            ditto -c -k --sequesterRsrc --keepParent "dist/${{ matrix.artifact }}" "dist/${{ matrix.package }}"
+          fi
+
+      - name: Determine upload mode
+        id: mode
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "target=artifact" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=release" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload package as Artifact
+        if: steps.mode.outputs.target == 'artifact'
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: ${{ matrix.package }}
+          path: dist/${{ matrix.package }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload package to Release
+        if: steps.mode.outputs.target == 'release'
+        uses: softprops/action-gh-release@v2.3.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: dist/${{ matrix.package }}
+          fail_on_unmatched_files: true
+          append_body: true
+          body: "## 构建产物\n"

@@ -1,0 +1,138 @@
+/* Oriental Ink — 墨韵国风 */
+.oi-wrap{display:flex;flex-direction:column;height:100%;overflow:hidden}
+
+.oi-hero{position:relative;margin:12px 20px 0;padding:28px 28px 24px;border-radius:8px;background:rgba(var(--accent-rgb,120,80,40),0.08);border:1px solid rgba(var(--accent-rgb,120,80,40),0.12);overflow:hidden;flex-shrink:0}
+.oi-hero::before{content:'';position:absolute;top:0;right:0;width:160px;height:160px;background:radial-gradient(circle,rgba(var(--accent-rgb,180,130,60),0.06) 0%,transparent 70%);pointer-events:none}
+.oi-hero::after{content:attr(data-glyph);position:absolute;bottom:-16px;right:16px;font-size:96px;font-weight:900;color:var(--card-border);font-family:serif;opacity:0.3;pointer-events:none;animation:ink-breathe 4s ease-in-out infinite}
+@keyframes ink-breathe{0%,100%{opacity:0.15}50%{opacity:0.25}}
+.oi-hero-label{font-size:10px;color:var(--fg3);letter-spacing:4px;margin-bottom:10px}
+.oi-hero-title{font-size:22px;font-weight:700;color:var(--fg);margin-bottom:4px;font-family:'KaiTi','SimSun','STKaiti',serif}
+.oi-hero-meta{font-size:11px;color:var(--fg3);margin-bottom:14px}
+.oi-hero-btn{padding:6px 20px;border:1px solid var(--fg3);border-radius:3px;background:transparent;color:var(--fg);font-size:11px;cursor:pointer;font-family:'KaiTi','SimSun','STKaiti',serif;letter-spacing:2px;transition:all var(--transition-normal)}
+.oi-hero-btn:hover{background:var(--fg);color:var(--bg)}
+
+.oi-sep{display:flex;align-items:center;gap:14px;padding:0 20px;margin:16px 0 8px;flex-shrink:0}
+.oi-sep-line{flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--card-border),transparent)}
+.oi-sep-text{font-size:10px;color:var(--fg3);letter-spacing:4px;flex-shrink:0}
+
+.oi-toolbar{display:flex;align-items:center;gap:10px;padding:0 20px 8px;flex-shrink:0}
+.oi-spacer{flex:1}
+
+.oi-list{
+    flex:1;overflow-y:auto;padding:0 20px 20px;
+    list-style:none;
+    max-width:720px;margin:0 auto;width:100%
+}
+
+.oi-item{
+    display:flex;align-items:center;gap:16px;
+    padding:14px 0;
+    border-bottom:1px solid var(--card-border);
+    cursor:pointer;transition:background 0.12s,padding-left 0.12s;
+    will-change:background;
+}
+.oi-item:hover{padding-left:8px;background:var(--card-hover)}
+
+.oi-item-num{
+    font-size:22px;font-weight:200;color:var(--fg3);
+    width:36px;text-align:right;flex-shrink:0;
+    font-family:'Georgia','Times New Roman',serif
+}
+
+.oi-item-seal{
+    width:34px;height:34px;border-radius:3px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:700;color:#fff;
+    flex-shrink:0;position:relative;
+    box-shadow:1px 1px 4px rgba(0,0,0,0.15)
+}
+.oi-item-seal::after{
+    content:'';position:absolute;inset:-2px;
+    border:1px solid var(--card-border);border-radius:3px
+}
+
+.oi-item-info{flex:1;min-width:0}
+.oi-item-name{
+    font-size:14px;font-weight:600;color:var(--fg);
+    margin-bottom:2px;
+    font-family:'KaiTi','SimSun','STKaiti',serif;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+.oi-item-meta{font-size:10px;color:var(--fg3)}
+
+.oi-item-pct{font-size:12px;font-weight:600;width:46px;text-align:right;flex-shrink:0}
+
+.oi-empty{text-align:center;padding:60px 20px;color:var(--fg3)}
+.oi-empty-icon{font-size:48px;margin-bottom:12px;opacity:0.4}
+.oi-empty-text{font-size:13px}
+
+.sidebar .stat-card{
+    border-radius:6px;padding:14px;
+    border:1px solid rgba(var(--accent-rgb,120,80,40),0.08);
+    position:relative;overflow:hidden
+}
+.sidebar .stat-card::before{
+    content:'';position:absolute;top:0;right:0;width:40px;height:40px;
+    background:radial-gradient(circle,rgba(var(--accent-rgb,120,80,40),0.04),transparent);
+    pointer-events:none
+}
+.sidebar .stat-card:hover{border-color:rgba(var(--accent-rgb,120,80,40),0.2);background:rgba(var(--accent-rgb,120,80,40),0.03)}
+.sidebar .stat-val{
+    font-size:20px;font-weight:700;color:var(--fg);
+    background:none;-webkit-text-fill-color:var(--fg);
+    font-family:'KaiTi','SimSun','STKaiti',serif
+}
+.sidebar .stat-label{font-size:9px;color:var(--fg3);margin-top:3px;letter-spacing:1px}
+
+.oi-view-btns{display:flex;gap:0;border-radius:3px;border:1px solid var(--card-border);overflow:hidden;flex-shrink:0}
+.oi-view-btn{padding:4px 8px;border:none;background:transparent;color:var(--fg3);font-size:12px;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;justify-content:center;line-height:1}
+.oi-view-btn:hover{color:var(--fg)}
+.oi-view-btn.active{background:var(--accent);color:#fff}
+
+.oi-grid{
+    flex:1;overflow-y:auto;padding:0 20px 20px;
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
+    gap:14px;align-content:start
+}
+.oi-card{
+    display:flex;flex-direction:column;align-items:center;
+    padding:22px 14px 16px;border-radius:6px;
+    cursor:pointer;transition:transform 0.15s,border-color 0.15s,box-shadow 0.15s;
+    position:relative;text-align:center;
+    background:linear-gradient(180deg,rgba(var(--accent-rgb,120,80,40),0.04),rgba(var(--accent-rgb,120,80,40),0.01));
+    border:1px solid rgba(var(--accent-rgb,120,80,40),0.1);
+    overflow:hidden;will-change:transform,box-shadow;
+}
+.oi-card::before{
+    content:'';position:absolute;top:0;right:0;width:60px;height:60px;
+    background:radial-gradient(circle,rgba(var(--accent-rgb,180,130,60),0.06) 0%,transparent 70%);
+    pointer-events:none
+}
+.oi-card:hover{
+    border-color:rgba(var(--accent-rgb,120,80,40),0.25);
+    transform:translateY(-3px);
+    box-shadow:0 8px 24px rgba(0,0,0,0.1)
+}
+.oi-card-seal{
+    width:46px;height:46px;border-radius:4px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;font-weight:700;color:#fff;flex-shrink:0;
+    margin-bottom:12px;position:relative;
+    box-shadow:1px 1px 6px rgba(0,0,0,0.15)
+}
+.oi-card-seal::after{
+    content:'';position:absolute;inset:-3px;
+    border:1px solid var(--card-border);border-radius:4px
+}
+.oi-card-name{
+    font-size:14px;font-weight:600;color:var(--fg);
+    margin-bottom:4px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;max-width:100%;
+    font-family:'KaiTi','SimSun','STKaiti',serif
+}
+.oi-card:hover .oi-card-name{color:var(--accent)}
+.oi-card-meta{font-size:10px;color:var(--fg3);margin-bottom:10px}
+.oi-card-bar{width:100%;height:2px;border-radius:1px;background:var(--card-border);overflow:hidden}
+.oi-card-bar-fill{height:100%;border-radius:1px;transition:width 0.3s}
+.oi-card-pct{font-size:11px;font-weight:600;margin-top:8px}

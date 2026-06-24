@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cardread Pro</title>
+    <link rel="stylesheet" href="common.css">
+    <link rel="stylesheet" href="gallery.css">
+    <script src="utils.js" defer></script>
+    <script src="common.js" defer></script>
+    <script src="virtual-scroll.js" defer></script>
+    <script src="gallery.js" defer></script>
+</head>
+<body>
+    <div class="app" id="appRoot">
+        <div class="drag-overlay" id="dragOverlay">
+            <div class="drag-overlay-box">
+                <div class="drag-overlay-icon">📥</div>
+                <div class="drag-overlay-text">拖放文件到此处导入</div>
+                <div class="drag-overlay-hint">支持 TXT / MD / EPUB / MOBI 格式</div>
+            </div>
+        </div>
+
+        <div class="title-bar" id="titleBar">
+            <span class="title-brand"><span class="brand-name">Cardread</span><span class="brand-pro">Pro</span></span>
+            <span class="spacer"></span>
+            <button class="win-btn" onclick="minimizeWindow()" title="最小化">─</button>
+            <button class="win-btn" id="maxBtn" onclick="toggleMaximize()" title="最大化">□</button>
+            <button class="win-btn close-btn" onclick="closeWindow()" title="关闭">✕</button>
+        </div>
+
+        <div class="nav-bar">
+            <div class="nav-links">
+                <a class="active" data-page="shelf" onclick="navTo('shelf')">书架</a>
+                <a data-page="bookmark" onclick="navTo('bookmark')">书签</a>
+                <a data-page="notes" onclick="navTo('notes')">便签</a>
+                <a data-page="stats" onclick="navTo('stats')">统计</a>
+                <a data-page="settings" onclick="navTo('settings')">设置</a>
+                <a data-page="guide" onclick="navTo('guide')">说明</a>
+                <a data-page="log" onclick="navTo('log')">日志</a>
+            </div>
+        </div>
+
+        <div class="main-body">
+            <div class="content">
+                <div class="page-panel active" id="pageShelf">
+                    <div class="sd-wrap">
+                        <div class="sd-hero" id="sdHero" onclick="heroClick()" style="display:none;">
+                            <div class="sd-hero-grid">
+                                <div class="sd-hero-ring" id="sdHeroRing"></div>
+                                <div class="sd-hero-center">
+                                    <div class="sd-hero-tag">COMMAND CENTER</div>
+                                    <div class="sd-hero-title" id="sdHeroTitle"></div>
+                                    <div class="sd-hero-meta" id="sdHeroMeta"></div>
+                                </div>
+                                <div class="sd-hero-stats">
+                                    <div class="sd-hero-stat"><div class="sd-hero-stat-val" id="sdStatBooks">0</div><div class="sd-hero-stat-label">BOOKS</div></div>
+                                    <div class="sd-hero-stat"><div class="sd-hero-stat-val" id="sdStatCh">0</div><div class="sd-hero-stat-label">CH.</div></div>
+                                    <div class="sd-hero-stat"><div class="sd-hero-stat-val" id="sdStatWords">0</div><div class="sd-hero-stat-label">WORDS</div></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sd-toolbar">
+                            <span class="sd-label">HANGAR</span>
+                            <span class="sd-count" id="bookCountBadge">0</span>
+                            <span class="sd-spacer"></span>
+                            <div class="sd-view-btns">
+                                <button class="sd-view-btn active" id="viewToggle" onclick="toggleView()" title="切换视图">▦</button>
+                            </div>
+                            <div style="position:relative;display:flex;align-items:center;max-width:160px;min-width:0;">
+                                <input class="search-box" id="searchInput" type="text" placeholder="搜索..." oninput="filterBooks()" style="max-width:160px;padding-right:22px;">
+                                <button id="searchClear" class="search-clear-btn" onclick="document.getElementById('searchInput').value='';filterBooks();" title="清除搜索">✕</button>
+                            </div>
+                            <select class="filter-select" id="filterFormat" onchange="filterBooks()"><option value="">全部</option><option value="TXT">TXT</option><option value="MD">MD</option><option value="EPUB">EPUB</option><option value="MOBI">MOBI</option></select>
+                            <select class="filter-select" id="filterProgress" onchange="filterBooks()"><option value="">全部进度</option><option value="unread">未读</option><option value="reading">阅读中</option><option value="done">已读</option></select>
+                            <select class="filter-select" id="sortBy" onchange="filterBooks()"><option value="recent">最近</option><option value="name">名称</option><option value="added">添加</option><option value="progress">进度</option></select>
+                            <button class="add-btn" onclick="addBooks()">+</button>
+                        </div>
+                        <div class="sd-grid" id="bookList"></div>
+                    </div>
+                </div>
+
+                <div class="page-panel" id="pageSettings"><!-- 由 common.js loadPartials() 动态加载 --></div>
+
+                <div class="page-panel" id="pageBookmark">
+                    <div class="bookmark-list" id="bookmarkList">
+                        <div class="empty-state"><div class="icon">🔖</div><p>暂无书签</p></div>
+                    </div>
+                </div>
+
+                <div class="page-panel" id="pageNotes"><!-- 由 common.js renderPartials() 动态加载 --></div>
+
+                <div class="page-panel" id="pageStats">
+                    <div class="stats-page" id="statsPage">
+                        <div class="empty-state"><div class="icon">📊</div><p>暂无统计数据</p></div>
+                    </div>
+                </div>
+
+                <div class="page-panel" id="pageGuide" style="padding:20px;overflow-y:auto;"><!-- 由 common.js loadPartials() 动态加载 --></div>
+
+                <div class="page-panel" id="pageLog"><!-- 由 common.js loadPartials() 动态加载 --></div>
+            </div>
+
+            <div class="sidebar" id="sidebar">
+                <div class="stat-card">
+                    <div class="stat-val" id="booksCount">0</div>
+                    <div class="stat-label">总藏书</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-val" id="chaptersCount">0</div>
+                    <div class="stat-label">章节</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-val" id="readingTime">0</div>
+                    <div class="stat-label" id="readingTimeUnit">阅读时长</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-val" id="progressPercent">0%</div>
+                    <div class="stat-label">阅读进度</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="status-bar">
+            <span id="statusText">就绪</span>
+            <span class="spacer"></span>
+            <span style="margin-left:10px;" id="versionText">v0.0.1</span>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal">
+            <h2 id="confirmTitle">确认</h2>
+            <p id="confirmMessage"></p>
+            <div class="modal-actions"><button class="btn btn-ghost" onclick="closeConfirm()">取消</button><button class="btn btn-accent" onclick="confirmAction()">确定</button></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="promptModal">
+        <div class="modal">
+            <h2 id="promptTitle">输入</h2>
+            <label class="modal-input-label" id="promptLabel"></label>
+            <input class="modal-input" id="promptInput" type="text" onkeydown="if(event.key==='Enter'){event.preventDefault();promptConfirmAction();}if(event.key==='Escape'){closePrompt();}">
+            <div class="modal-actions" style="margin-top:14px;"><button class="btn btn-ghost" onclick="closePrompt()">取消</button><button class="btn btn-accent" onclick="promptConfirmAction()">确定</button></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal" style="max-width:380px;">
+            <h2 id="detailTitle">书籍详情</h2>
+            <div id="detailBody" style="font-size:12px;color:var(--fg);line-height:2.2;"></div>
+            <div class="modal-actions" style="margin-top:14px;"><button class="btn btn-accent" onclick="closeDetailModal()">关闭</button></div>
+        </div>
+    </div>
+
+    <div class="context-menu" id="contextMenu">
+            <div class="context-menu-item" onclick="openBookFromContext()">📖 打开阅读</div>
+            <div class="context-menu-item" onclick="openBookDirFromContext()">📂 打开目录</div>
+            <div class="context-menu-divider"></div>
+            <div class="context-menu-item" onclick="copyBookName()">📋 复制书名</div>
+            <div class="context-menu-item" onclick="copyBookPath()">📁 复制文件路径</div>
+            <div class="context-menu-item" onclick="renameBookFromContext()">✏️ 重命名</div>
+            <div class="context-menu-item" onclick="showBookDetailFromContext()">📄 查看详情</div>
+            <div class="context-menu-divider"></div>
+            <div class="context-menu-item" onclick="deleteBookFromContext()" style="color:#e74c3c;">🗑️ 删除书籍</div>
+        </div>
+
+    <div class="toast" id="toast"></div>
+</body>
+</html>

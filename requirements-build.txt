@@ -1,0 +1,5 @@
+# CardRead2 构建依赖（仅打包时需要）
+-r requirements.txt
+nuitka
+ordered-set
+zstandard

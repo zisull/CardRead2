@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>便签</title>
+    <link rel="stylesheet" href="vendor/highlight.styles/default.min.css">
+    <script src="vendor/highlight.min.js" defer></script>
+    <script src="vendor/languages/python.min.js" defer></script>
+    <script src="vendor/languages/javascript.min.js" defer></script>
+    <script src="vendor/languages/bash.min.js" defer></script>
+    <script src="vendor/languages/json.min.js" defer></script>
+    <script src="vendor/languages/html.min.js" defer></script>
+    <script src="vendor/languages/css.min.js" defer></script>
+    <script src="vendor/languages/markdown.min.js" defer></script>
+    <script src="utils.js" defer></script>
+    <link rel="stylesheet" href="notes_viewer.css">
+</head>
+<body>
+    <div class="viewer-card" id="viewerCard">
+        <div class="title-bar" id="titleBar">
+            <span class="note-title" id="noteTitle">便签</span>
+            <span style="flex:1"></span>
+            <button class="win-btn" id="editBtn" title="编辑">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="win-btn" id="saveBtn" title="保存并预览" style="display:none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+            <button class="win-btn" id="topBtn" title="置顶窗口">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z"/></svg>
+            </button>
+            <button class="win-btn close-btn" id="closeBtn" title="关闭">✕</button>
+        </div>
+        <div class="content-area" id="contentArea"></div>
+        <textarea class="edit-area" id="editArea" spellcheck="false" style="display:none;" placeholder="输入 Markdown 内容..."></textarea>
+    </div>
+    <div class="toast" id="toast"></div>
+    <div class="resize-handle" id="resizeHandle"></div>
+    <script src="notes_viewer.js" defer></script>
+</body>
+</html>
