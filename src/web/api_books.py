@@ -381,7 +381,7 @@ class BooksMixin:
                 tmp_file.write(raw)
             
             try:
-                book = self._book_manager.import_book(tmp_path)
+                book = self._book_manager.import_book(tmp_path, book_name_override=safe_name)
             finally:
                 # 确保临时文件被删除
                 if os.path.isfile(tmp_path):

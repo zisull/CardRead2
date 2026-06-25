@@ -39,7 +39,7 @@ class BookManager:
         self.data_store = data_store
         self._encoding_detector = EncodingDetector()
 
-    def import_book(self, file_path: str) -> Optional[Book]:
+    def import_book(self, file_path: str, book_name_override: Optional[str] = None) -> Optional[Book]:
         """导入书籍
 
         根据文件格式采用不同策略：
@@ -48,6 +48,7 @@ class BookManager:
 
         Args:
             file_path: 文件路径
+            book_name_override: 指定书名（如拖拽上传时临时文件名无意义，需传入真实文件名）
 
         Returns:
             Book 对象，失败返回 None
@@ -59,7 +60,9 @@ class BookManager:
         # 规范化源文件路径
         abs_file_path = str(Path(file_path).resolve())
 
-        book_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', Path(file_path).stem).strip('. ')
+        # 优先使用覆盖书名（拖拽上传场景），否则从文件路径推导
+        raw_name = book_name_override if book_name_override is not None else Path(file_path).stem
+        book_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', raw_name).strip('. ')
         ext = Path(file_path).suffix.lower()
 
         if self.has_book(book_name):

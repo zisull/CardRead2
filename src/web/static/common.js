@@ -745,15 +745,15 @@ function renameBookFromContext() {
     const bookName = contextMenuBook;
     hideContextMenu();
     const book = books.find(b => b.name === bookName);
-    const currentDisplay = book ? (book.display_name || book.name) : bookName;
-    showPrompt('重命名', '请输入新的显示名称：', currentDisplay, async function(newName) {
+    const currentName = book ? (book.display_name || book.name) : bookName;
+    showPrompt('重命名', '请输入新的书籍名称：', currentName, async function(newName) {
         if (newName === null || newName === undefined) return;
         if (!newName.trim()) { showToast('名称不能为空'); return; }
+        if (newName.trim() === bookName) { return; }
         try {
-            const r = await api().set_display_name(bookName, newName.trim());
+            // 调用 rename_book 同步重命名书名与物理文件名
+            const r = await api().rename_book(bookName, newName.trim());
             if (r.success) {
-                const book = books.find(b => b.name === bookName);
-                if (book) { book.display_name = newName.trim(); }
                 _booksDirty = true;
                 await loadDashboard();
             } else {
