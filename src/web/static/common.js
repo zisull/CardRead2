@@ -2318,8 +2318,16 @@ function initNoteDragSelect() {
     var dragMode = true;
     var lastTouchedId = null;
     list.addEventListener('pointerdown', function(e) {
+        // 仅左键 + 按住 Ctrl 才进入拖拽多选，否则让点击事件正常冒泡（打开便签等）
+        if (e.button !== 0 || !e.ctrlKey) {
+            return;
+        }
         var row = e.target.closest('.note-row');
-        if (!row || e.button !== 0) {
+        if (!row) {
+            return;
+        }
+        // 点击 checkbox 时不进入拖拽多选，交由其自身 onclick 处理
+        if (e.target.closest('input[type="checkbox"]')) {
             return;
         }
         dragging = true;
@@ -2332,6 +2340,10 @@ function initNoteDragSelect() {
     });
     list.addEventListener('pointermove', function(e) {
         if (!dragging) {
+            return;
+        }
+        // 拖拽过程中松开 Ctrl 则中止多选
+        if (!e.ctrlKey) {
             return;
         }
         var row = e.target.closest('.note-row');
@@ -2589,7 +2601,7 @@ const _PARTIAL_LOG = '<div style="display:flex;align-items:center;gap:10px;margi
 
 const _PARTIAL_GUIDE = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;"><div class="is-card"><div class="is-card-title">§book 阅读操作</div><div style="font-size:13px;color:var(--fg);line-height:2.2;"><div>▪ 左侧点击 / ← / PageUp：上一页</div><div>▪ 右侧点击 / → / PageDown / 空格：下一页</div><div>▪ ↑ / ↓ 方向键：逐行滚动</div><div>▪ 章节首尾自动切换上下章</div><div>▪ Ctrl + ↓：加速向下阅读（+0.25）</div><div>▪ Ctrl + ↑：减速 / 反向向上（-0.25）</div><div>▪ Ctrl + 滚轮：同上调节速度</div><div>▪ Ctrl + F：全文搜索当前书籍</div><div>▪ Ctrl + Alt + 滚轮：调节阅读字体大小</div><div>▪ Esc：停止自动 / 关闭面板</div></div></div><div class="is-card"><div class="is-card-title">§bookmark 书签与目录</div><div style="font-size:13px;color:var(--fg);line-height:2.2;"><div>▪ 点击底部章节名打开目录，支持搜索和章节预览</div><div>▪ 顶部工具栏 🔖 按钮打开书签面板</div><div>▪ 书签支持添加、编辑描述、点击跳转、单条删除</div><div>▪ 书签支持按添加时间/章节顺序排序</div><div>▪ 书签支持勾选全选后批量删除</div><div>▪ 右键菜单：复制、目录、书签、检索、打开书架、自动阅读</div></div></div><div class="is-card"><div class="is-card-title">§palette 主题与设置</div><div style="font-size:13px;color:var(--fg);line-height:2.2;"><div>▪ 🌙/☀ 图标切换深浅主题</div><div>▪ 20种内置配色 + 自定义保存</div><div>▪ 5种主页布局可切换</div><div>▪ 自定义字体、字号、行距</div><div>▪ 设置页 ＋ 按钮添加自定义字体</div><div>▪ 支持导入/导出/随机配色</div><div>▪ 可设置主页/阅读背景图片</div></div></div><div class="is-card"><div class="is-card-title">§folder 支持格式</div><div style="font-size:13px;color:var(--fg);line-height:2.2;"><div>▪ <b>TXT</b> — 纯文本（自动识别编码）</div><div>▪ <b>Markdown</b> — .md 文件（支持图片）</div><div>▪ <b>EPUB</b> — 电子书（支持内链封面）</div><div>▪ <b>MOBI</b> — Kindle 格式（自动解析）</div></div></div><div class="is-card"><div class="is-card-title">§lightbulb 小技巧</div><div style="font-size:13px;color:var(--fg);line-height:2.2;"><div>▪ 拖放文件到窗口快速导入书籍</div><div>▪ 标题栏拖拽移动窗口</div><div>▪ 右下角拖拽调整窗口大小</div><div>▪ 阅读进度自动保存恢复</div><div>▪ 代码块语法高亮与一键复制</div><div>▪ 右键菜单：重命名、查看详情</div></div></div><div class="is-card"><div class="is-card-title">§user 作者</div><div id="guideAuthorCard" style="font-size:13px;color:var(--fg);line-height:2.2;"></div></div></div>';
 
-const _PARTIAL_NOTES = '<div style="padding:16px 20px;height:100%;display:flex;flex-direction:column;box-sizing:border-box;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-shrink:0;flex-wrap:wrap;"><span style="font-size:16px;font-weight:700;color:var(--fg);letter-spacing:0.5px;">§note 便签</span><span id="noteCount" style="font-size:10px;color:var(--fg3);background:var(--card);padding:2px 8px;border-radius:10px;"></span><div style="flex:1;"></div><input id="noteSearchInput" type="text" placeholder="搜索便签..." onkeydown="searchNotesKeydown(event)" style="width:160px;padding:4px 10px;border-radius:6px;border:1px solid var(--card-border);background:var(--input-bg);color:var(--fg);font-size:11px;outline:none;" onfocus="this.style.borderColor=\'var(--accent)\'" onblur="this.style.borderColor=\'var(--card-border)\'"><button class="btn btn-ghost" onclick="searchNotes()" style="padding:4px 8px;font-size:11px;display:inline-flex;align-items:center;gap:4px;"><span style="font-size:12px;line-height:1;">🔍</span><span>搜索</span></button><select id="noteGroupFilter" onchange="filterNotesByGroup()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--card-border);background:var(--input-bg);color:var(--fg);font-size:11px;outline:none;"><option value="">全部分组</option></select><select id="noteSortBy" onchange="renderNotes()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--card-border);background:var(--input-bg);color:var(--fg);font-size:11px;outline:none;"><option value="updated">按更新时间</option><option value="created">按创建时间</option><option value="title">按标题</option></select><button class="btn btn-ghost" onclick="addSampleNote()" style="padding:4px 10px;font-size:11px;display:inline-flex;align-items:center;gap:4px;"><span style="font-size:12px;line-height:1;">📄</span><span>示例</span></button><button class="btn btn-accent" onclick="createNote()" style="padding:5px 14px;font-size:11px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;"><span style="font-size:12px;line-height:1;">➕</span><span>新建</span></button></div><div id="noteList" style="flex:1;overflow-y:auto;"></div></div>';
+const _PARTIAL_NOTES = '<div style="padding:16px 20px;height:100%;display:flex;flex-direction:column;box-sizing:border-box;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-shrink:0;flex-wrap:wrap;"><span style="font-size:16px;font-weight:700;color:var(--fg);letter-spacing:0.5px;">§note 便签</span><span id="noteCount" style="font-size:10px;color:var(--fg3);background:var(--card);padding:2px 8px;border-radius:10px;"></span><div style="flex:1;"></div><input id="noteSearchInput" type="text" placeholder="搜索便签..." onkeydown="searchNotesKeydown(event)" style="width:160px;padding:4px 10px;border-radius:6px;border:1px solid var(--card-border);background:var(--input-bg);color:var(--fg);font-size:11px;outline:none;" onfocus="this.style.borderColor=\'var(--accent)\'" onblur="this.style.borderColor=\'var(--card-border)\'"><button class="btn btn-ghost" onclick="searchNotes()" style="padding:4px 8px;font-size:11px;display:inline-flex;align-items:center;gap:4px;"><span style="font-size:12px;line-height:1;">🔍</span><span>搜索</span></button><select id="noteGroupFilter" onchange="filterNotesByGroup()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--card-border);background:var(--input-bg);color:var(--fg);font-size:11px;outline:none;"><option value="">全部分组</option></select><select id="noteSortBy" onchange="renderNotes()" style="padding:4px 8px;border-radius:6px;border:1px solid var(--card-border);background:var(--input-bg);color:var(--fg);font-size:11px;outline:none;"><option value="updated">按更新时间</option><option value="created">按创建时间</option><option value="title">按标题</option></select><button class="btn btn-ghost" onclick="addSampleNote()" style="padding:4px 10px;font-size:11px;display:inline-flex;align-items:center;gap:4px;"><span style="font-size:12px;line-height:1;">📄</span><span>示例</span></button><button class="btn btn-accent" onclick="createNote()" style="padding:5px 14px;font-size:11px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;"><span style="font-size:12px;line-height:1;">➕</span><span>新建</span></button></div><div style="font-size:10px;color:var(--fg3);margin-bottom:8px;opacity:0.7;flex-shrink:0;">§lightbulb 提示：单击打开便签，按住 Ctrl + 拖动可多选</div><div id="noteList" style="flex:1;overflow-y:auto;"></div></div>';
 
 function _resolveIcons(html) {
     return html.replace(/§(\w+)/g, function(_, key) { return ICONS[key] || ''; });
