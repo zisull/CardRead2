@@ -309,6 +309,28 @@ class SearchIndex:
         except Exception as e:
             logger.error(f"索引删除失败: {book_name}: {e}")
             return False
+
+    def clear_all(self) -> bool:
+        """清空所有书籍索引"""
+        if not self._conn:
+            return False
+        try:
+            with self._lock:
+                try:
+                    self._conn.execute("DELETE FROM book_content")
+                    self._conn.execute("DELETE FROM index_metadata")
+                    self._conn.commit()
+                except Exception:
+                    try:
+                        self._conn.rollback()
+                    except Exception:
+                        pass
+                    raise
+            logger.debug("所有索引已清空")
+            return True
+        except Exception as e:
+            logger.error(f"清空索引失败: {e}")
+            return False
     
     def get_stats(self) -> Dict:
         """获取索引统计信息

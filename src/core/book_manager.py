@@ -193,6 +193,29 @@ class BookManager:
             return self.data_store.remove_book(name)
         return False
 
+    def clear_all_books(self, delete_files: bool = True) -> int:
+        """清空所有书籍
+
+        Args:
+            delete_files: 是否同时删除书籍物理文件
+
+        Returns:
+            实际删除的物理文件数量
+        """
+        deleted_files = 0
+        if delete_files:
+            books = self.get_all_books_list()
+            for book in books:
+                if book.file_exists():
+                    try:
+                        os.remove(book.file_path)
+                        deleted_files += 1
+                    except OSError as e:
+                        logger.warning(f"删除书籍文件失败 [{book.name}]: {e}")
+        if self.data_store:
+            self.data_store.clear_all_books()
+        return deleted_files
+
     def get_book(self, name: str) -> Optional[Book]:
         """获取书籍
 

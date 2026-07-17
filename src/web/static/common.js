@@ -697,7 +697,7 @@ function showContextMenu(e, name) {
     var x = e.clientX;
     var y = e.clientY;
     var menuWidth = 180;
-    var menuHeight = 300;
+    var menuHeight = 340;
     
     if (x + menuWidth > window.innerWidth) {
         x = window.innerWidth - menuWidth - 10;
@@ -740,6 +740,29 @@ function copyBookPath() {
     hideContextMenu();
 }
 function deleteBookFromContext() { if (contextMenuBook) deleteBook(contextMenuBook); hideContextMenu(); }
+function clearBookshelfFromContext() { hideContextMenu(); clearBookshelf(); }
+
+async function clearBookshelf() {
+    showConfirm('清空书架', '确定要清空整个书架吗？\n\n此操作将不可撤销地删除：\n• 所有书籍文件\n• 所有阅读进度\n• 所有书签\n\n请谨慎操作！', async () => {
+        try {
+            setStatus('正在清空书架...');
+            const r = await api().clear_bookshelf();
+            if (r && r.success) {
+                showToast('书架已清空' + (r.deleted_files > 0 ? `（删除 ${r.deleted_files} 个文件）` : ''));
+                _cachedStats = null;
+                _shelfDirty = true;
+                _bookmarkDirty = true;
+                await loadDashboard();
+            } else {
+                showToast('清空书架失败：' + (r && r.error ? r.error : '未知错误'));
+            }
+            setStatus('就绪');
+        } catch (e) {
+            showToast('清空书架失败: ' + (e.message || e));
+            setStatus('就绪');
+        }
+    });
+}
 function renameBookFromContext() {
     if (!contextMenuBook) { hideContextMenu(); return; }
     const bookName = contextMenuBook;

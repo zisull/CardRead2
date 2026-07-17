@@ -434,6 +434,62 @@ class BooksMixin:
             logger.error(f"删除书籍失败: {e}")
             return False
 
+    def clear_bookshelf(self) -> Dict[str, Any]:
+        """清空整个书架：删除所有书籍文件 + 阅读进度 + 书签 + 搜索索引。
+
+        Returns:
+            {'success': bool, 'deleted_files': int, 'error': str}
+        """
+        try:
+            # 1. 关闭所有阅读器窗口
+            with self._windows_lock:
+                for name, w in list(self._reader_windows.items()):
+                    with suppress(Exception):
+                        w.destroy()
+                self._reader_windows.clear()
+
+            # 2. 关闭所有阅读引擎，释放资源
+            with self._engines_lock:
+                engine_names = list(self._reading_engines.keys())
+            for book_name in engine_names:
+                with suppress(Exception):
+                    engine = self._reading_engines.get(book_name)
+                    if engine:
+                        engine.chapter_parser.clear()
+                with self._engines_lock:
+                    self._reading_engines.pop(book_name, None)
+                with suppress(Exception):
+                    self._data_store.stop_reading_session(book_name)
+            self._current_book = None
+
+            # 3. 清空书籍物理文件 + books 表
+            deleted_files = self._book_manager.clear_all_books(delete_files=True)
+
+            # 4. 清空所有书签
+            self._data_store.clear_all_bookmarks()
+
+            # 5. 清空所有阅读进度
+            self._data_store.clear_all_progress()
+
+            # 6. 清空封面/预览缓存
+            with suppress(Exception):
+                self._cover_cache.clear()
+                self._preview_cache.clear()
+
+            # 7. 清空搜索索引
+            with suppress(Exception):
+                self._search_index.clear_all()
+
+            # 8. 保存并失效书架缓存
+            self._save_immediate()
+            self._invalidate_books_cache()
+
+            logger.info(f"书架已清空，删除物理文件 {deleted_files} 个")
+            return {'success': True, 'deleted_files': deleted_files}
+        except Exception as e:
+            logger.error(f"清空书架失败: {e}")
+            return {'success': False, 'deleted_files': 0, 'error': str(e)}
+
     def rename_book(self, old_name: str, new_name: str) -> Dict[str, Any]:
         try:
             if not _validate_book_name(old_name):

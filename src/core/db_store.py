@@ -192,6 +192,18 @@ class DbStore:
                 logger.error(f"移除书籍失败: {e}")
                 return False
 
+    def clear_all_books(self) -> bool:
+        """清空所有书籍记录（不级联清理进度/书签，调用方需自行处理）"""
+        with self._lock:
+            try:
+                conn = self._get_conn()
+                conn.execute("DELETE FROM books")
+                conn.commit()
+                return True
+            except Exception as e:
+                logger.error(f"清空书籍失败: {e}")
+                return False
+
     def has_book(self, name: str) -> bool:
         """检查书籍是否存在"""
         with self._lock:
@@ -303,6 +315,18 @@ class DbStore:
                 logger.error(f"移除书籍书签失败: {e}")
                 return False
 
+    def clear_all_bookmarks(self) -> bool:
+        """清空所有书签"""
+        with self._lock:
+            try:
+                conn = self._get_conn()
+                conn.execute("DELETE FROM bookmarks")
+                conn.commit()
+                return True
+            except Exception as e:
+                logger.error(f"清空书签失败: {e}")
+                return False
+
     def count_bookmarks(self, book_name: Optional[str] = None) -> int:
         """统计书签数量"""
         with self._lock:
@@ -373,6 +397,18 @@ class DbStore:
                 return True
             except Exception as e:
                 logger.error(f"移除阅读进度失败: {e}")
+                return False
+
+    def clear_all_progress(self) -> bool:
+        """清空所有阅读进度"""
+        with self._lock:
+            try:
+                conn = self._get_conn()
+                conn.execute("DELETE FROM reading_progress")
+                conn.commit()
+                return True
+            except Exception as e:
+                logger.error(f"清空阅读进度失败: {e}")
                 return False
 
     def get_last_read_book(self) -> Optional[str]:

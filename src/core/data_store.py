@@ -388,6 +388,10 @@ class DataStore:
         """移除书籍及其相关数据"""
         return self.db_store.remove_book(name)
 
+    def clear_all_books(self) -> bool:
+        """清空所有书籍记录（不级联清理进度/书签，调用方需自行处理）"""
+        return self.db_store.clear_all_books()
+
     def has_book(self, name: str) -> bool:
         """检查书籍是否存在"""
         return self.db_store.has_book(name)
@@ -418,6 +422,10 @@ class DataStore:
         """移除书籍的所有书签"""
         return self.db_store.remove_book_bookmarks(book_name)
 
+    def clear_all_bookmarks(self) -> bool:
+        """清空所有书签"""
+        return self.db_store.clear_all_bookmarks()
+
     def count_bookmarks(self, book_name: Optional[str] = None) -> int:
         """统计书签数量"""
         return self.db_store.count_bookmarks(book_name)
@@ -443,6 +451,10 @@ class DataStore:
     def remove_progress(self, book_name: str) -> bool:
         """移除阅读进度"""
         return self.db_store.remove_progress(book_name)
+
+    def clear_all_progress(self) -> bool:
+        """清空所有阅读进度"""
+        return self.db_store.clear_all_progress()
 
     def get_last_read_book(self) -> Optional[str]:
         """获取最近阅读的书籍"""
