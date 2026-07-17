@@ -183,8 +183,8 @@
     <script>
         async function init() {
             try {
-                await loadTheme();
                 await Promise.all([loadAppInfo(), loadSettings()]);
+                await loadTheme();
                 await loadDashboard();
             } catch (e) {
                 console.error('[Init] 初始化失败:', e.message || e);

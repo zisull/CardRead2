@@ -419,7 +419,7 @@ class ThemesMixin:
                         self._theme_manager.save_current_theme()
             clean = {k: v for k, v in settings.items() if k not in ('current_theme', 'theme_colors')}
             self._data_store.update_settings(clean)
-            self._save_deferred()
+            self._save_immediate()
             if theme_name or theme_colors:
                 self._invalidate_themes_cache()
             return True

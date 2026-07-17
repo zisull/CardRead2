@@ -6,6 +6,7 @@ import base64
 import json
 import mimetypes
 import os
+import shutil
 import sys
 import threading
 import zipfile
@@ -266,8 +267,9 @@ class BooksMixin:
             return []
         return list(result) if isinstance(result, (list, tuple)) else [result]
 
-    def open_image_dialog(self) -> Optional[str]:
+    def open_image_dialog(self, target: str = 'background') -> Dict[str, Any]:
         try:
+            import hashlib
             import webview
             result = self._window.create_file_dialog(
                 webview.FileDialog.OPEN,
@@ -277,11 +279,32 @@ class BooksMixin:
                 ),
             )
             if not result:
-                return None
-            return result if isinstance(result, str) else result[0]
+                return {'success': False, 'cancelled': True}
+            source = result if isinstance(result, str) else result[0]
+            if not os.path.isfile(source):
+                return {'success': False, 'error': '图片文件不存在'}
+            size = os.path.getsize(source)
+            if size > _MAX_IMAGE_DATA_URL_SIZE:
+                return {'success': False, 'error': '图片不能超过10MB'}
+            extension = Path(source).suffix.lower()
+            if extension not in {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}:
+                return {'success': False, 'error': '不支持的图片格式'}
+            safe_target = target if target in {'home', 'reader', 'notes'} else 'background'
+            digest = hashlib.sha256(Path(source).read_bytes()).hexdigest()[:16]
+            os.makedirs(self._dirs['imgs'], exist_ok=True)
+            destination = os.path.join(self._dirs['imgs'], f'{safe_target}_{digest}{extension}')
+            if os.path.abspath(source) != os.path.abspath(destination):
+                shutil.copy2(source, destination)
+            data_url = self.get_image_data_url(destination)
+            if not data_url:
+                with suppress(OSError):
+                    if os.path.abspath(source) != os.path.abspath(destination):
+                        os.remove(destination)
+                return {'success': False, 'error': '图片读取失败'}
+            return {'success': True, 'path': destination, 'data_url': data_url}
         except Exception as e:
             logger.error(f"图片对话框错误: {e}")
-            return None
+            return {'success': False, 'error': '选择图片失败'}
 
     def get_image_data_url(self, file_path: str) -> Optional[str]:
         try:

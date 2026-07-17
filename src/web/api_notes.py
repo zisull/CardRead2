@@ -369,17 +369,7 @@ class NotesMixin:
         settings = self._data_store.get_all_settings()
         font_color = settings.get('font_color', theme.get('fg', '#e0d8f0'))
         notes_bg_image = settings.get('notes_bg_image', '')
-        notes_bg_data_url = ''
-        if notes_bg_image:
-            try:
-                import mimetypes, base64, os
-                if os.path.isfile(notes_bg_image) and os.path.getsize(notes_bg_image) <= 5 * 1024 * 1024:
-                    mime = mimetypes.guess_type(notes_bg_image)[0] or 'image/png'
-                    with open(notes_bg_image, 'rb') as f:
-                        data = base64.b64encode(f.read()).decode('utf-8')
-                    notes_bg_data_url = f'data:{mime};base64,{data}'
-            except Exception:
-                pass
+        notes_bg_data_url = self.get_image_data_url(notes_bg_image) if notes_bg_image else ''
         return {
             'bg': theme.get('bg', '#0c0c14'),
             'fg': theme.get('fg', '#e0d8f0'),

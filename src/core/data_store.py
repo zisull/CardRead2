@@ -241,25 +241,8 @@ class DataStore:
             'shortcut_prev_chapter': data.get('shortcut_prev_chapter', 'Ctrl+Up'),
             'shortcut_next_chapter': data.get('shortcut_next_chapter', 'Ctrl+Down'),
         })
-        _KNOWN_SETTING_KEYS = {
-            'current_theme', 'font_family', 'font_size', 'font_color',
-            'line_spacing', 'paragraph_spacing', 'text_indent', 'brightness',
-            'auto_next_chapter_enabled', 'page_turn_mode', 'page_turn_speed',
-            'nav_auto_hide', 'background_image_path', 'background_image_opacity',
-            'background_image_scale_mode', 'reading_mode', 'long_text_mode',
-            'books_dir', 'shortcut_scroll_up', 'shortcut_scroll_down',
-            'shortcut_scroll_lines', 'shortcut_prev_chapter', 'shortcut_next_chapter',
-            'reader_window_geometry', 'reader_bg_image', 'reader_bg_opacity',
-            'home_bg_image', 'home_bg_opacity',
-            'notes_bg_image', 'notes_bg_opacity',
-            'background_image', 'background_opacity',
-            'home_layout', 'custom_themes',
-            'note_window_geometry', 'note_always_on_top',
-        }
-        # 用文件数据覆盖（用户存档值优先于默认值）
-        for k, v in data.items():
-            if k in _KNOWN_SETTING_KEYS:
-                self._settings[k] = v
+        reserved_keys = {'bookshelf', 'bookmarks', 'reading_progress', 'reading_time', 'notes'}
+        self._settings.update({k: v for k, v in data.items() if k not in reserved_keys})
 
     def get_setting(self, key: str, default: Any = None) -> Any:
         """获取设置项

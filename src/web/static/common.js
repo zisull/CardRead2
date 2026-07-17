@@ -840,12 +840,22 @@ async function loadSettings() {
         if (window.updateClickBar) updateClickBar('homeBgOpacity');
         if (homeBg) {
             homeBgPath = homeBg;
-            document.getElementById('homeBgStatus').textContent = '✓';
-            document.getElementById('homeBgStatus').style.color = 'var(--accent)';
             try {
                 const dataUrl = await api().get_image_data_url(homeBg);
-                if (dataUrl) homeBgDataUrl = dataUrl;
-            } catch (e) {}
+                if (dataUrl) {
+                    homeBgDataUrl = dataUrl;
+                    document.getElementById('homeBgStatus').textContent = '✓';
+                    document.getElementById('homeBgStatus').style.color = 'var(--accent)';
+                } else {
+                    // 图片文件已失效（被移动/删除/路径变化），提示用户重新选择
+                    homeBgDataUrl = null;
+                    homeBgPath = null;
+                    document.getElementById('homeBgStatus').textContent = '✗';
+                    document.getElementById('homeBgStatus').style.color = 'var(--danger)';
+                }
+            } catch (e) {
+                homeBgDataUrl = null;
+            }
         }
 
         const readerBg = settings.reader_bg_image || settings.background_image || '';
@@ -869,13 +879,21 @@ async function loadSettings() {
         if (notesBg) {
             notesBgPath = notesBg;
             if (document.getElementById('notesBgStatus')) {
-                document.getElementById('notesBgStatus').textContent = '✓';
-                document.getElementById('notesBgStatus').style.color = 'var(--accent)';
+                try {
+                    const dataUrl = await api().get_image_data_url(notesBg);
+                    if (dataUrl) {
+                        notesBgDataUrl = dataUrl;
+                        document.getElementById('notesBgStatus').textContent = '✓';
+                        document.getElementById('notesBgStatus').style.color = 'var(--accent)';
+                    } else {
+                        notesBgDataUrl = null;
+                        document.getElementById('notesBgStatus').textContent = '✗';
+                        document.getElementById('notesBgStatus').style.color = 'var(--danger)';
+                    }
+                } catch (e) {
+                    notesBgDataUrl = null;
+                }
             }
-            try {
-                const dataUrl = await api().get_image_data_url(notesBg);
-                if (dataUrl) notesBgDataUrl = dataUrl;
-            } catch (e) {}
         }
     } catch (e) { showToast('加载设置失败'); }
 }
@@ -1862,20 +1880,17 @@ let readerBgPath = null;
 
 async function selectHomeBg() {
     try {
-        const path = await api().open_image_dialog();
-        if (path) {
-            homeBgPath = path;
-            settings.home_bg_image = path;
-            const dataUrl = await api().get_image_data_url(path);
-            if (dataUrl) {
-                homeBgDataUrl = dataUrl;
-                document.getElementById('homeBgStatus').textContent = '✓';
-                document.getElementById('homeBgStatus').style.color = 'var(--accent)';
-                applyHomeBg(dataUrl);
-            }
-            autoSaveSettings();
-            showToast('已设置主页背景');
-        }
+        const result = await api().open_image_dialog('home');
+        if (!result || result.cancelled) return;
+        if (!result.success) { showToast(result.error || '选择图片失败'); return; }
+        homeBgPath = result.path;
+        homeBgDataUrl = result.data_url;
+        settings.home_bg_image = result.path;
+        document.getElementById('homeBgStatus').textContent = '✓';
+        document.getElementById('homeBgStatus').style.color = 'var(--accent)';
+        applyHomeBg(result.data_url);
+        await applySettings();
+        showToast('已设置主页背景');
     } catch (e) { showToast('选择图片失败'); }
 }
 
@@ -1892,20 +1907,17 @@ function clearHomeBg() {
 
 async function selectReaderBg() {
     try {
-        const path = await api().open_image_dialog();
-        if (path) {
-            readerBgPath = path;
-            settings.reader_bg_image = path;
-            settings.background_image = path;
-            document.getElementById('readerBgStatus').textContent = '✓';
-            document.getElementById('readerBgStatus').style.color = 'var(--accent)';
-            const dataUrl = await api().get_image_data_url(path);
-            if (dataUrl) {
-                previewTypography();
-            }
-            autoSaveSettings();
-            showToast('已设置阅读背景');
-        }
+        const result = await api().open_image_dialog('reader');
+        if (!result || result.cancelled) return;
+        if (!result.success) { showToast(result.error || '选择图片失败'); return; }
+        readerBgPath = result.path;
+        settings.reader_bg_image = result.path;
+        settings.background_image = result.path;
+        document.getElementById('readerBgStatus').textContent = '✓';
+        document.getElementById('readerBgStatus').style.color = 'var(--accent)';
+        await applySettings();
+        previewTypography();
+        showToast('已设置阅读背景');
     } catch (e) { showToast('选择图片失败'); }
 }
 
@@ -1924,19 +1936,16 @@ let notesBgPath = null;
 let notesBgDataUrl = null;
 async function selectNotesBg() {
     try {
-        const path = await api().open_image_dialog();
-        if (path) {
-            notesBgPath = path;
-            settings.notes_bg_image = path;
-            const dataUrl = await api().get_image_data_url(path);
-            if (dataUrl) {
-                notesBgDataUrl = dataUrl;
-                document.getElementById('notesBgStatus').textContent = '✓';
-                document.getElementById('notesBgStatus').style.color = 'var(--accent)';
-            }
-            autoSaveSettings();
-            showToast('已设置便签背景');
-        }
+        const result = await api().open_image_dialog('notes');
+        if (!result || result.cancelled) return;
+        if (!result.success) { showToast(result.error || '选择图片失败'); return; }
+        notesBgPath = result.path;
+        notesBgDataUrl = result.data_url;
+        settings.notes_bg_image = result.path;
+        document.getElementById('notesBgStatus').textContent = '✓';
+        document.getElementById('notesBgStatus').style.color = 'var(--accent)';
+        await applySettings();
+        showToast('已设置便签背景');
     } catch (e) { showToast('选择图片失败'); }
 }
 function clearNotesBg() {
