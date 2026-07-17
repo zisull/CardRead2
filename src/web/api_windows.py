@@ -67,7 +67,13 @@ class WindowsMixin:
 
     def show_bookshelf(self) -> bool:
         try:
+            import webview
             w = getattr(self, '_window', None)
+            # 通过 webview.windows 判断主窗口是否仍然存活
+            # destroy() 后 self._window 仍可能持有失效引用，直接调用会静默失败
+            if w is not None and w not in webview.windows:
+                w = None
+                self._window = None
             if w:
                 with suppress(Exception):
                     w.restore()
@@ -76,10 +82,42 @@ class WindowsMixin:
                 with suppress(Exception):
                     self._set_window_on_top(w, True)
                     self._set_window_on_top(w, False)
+            else:
+                # 主窗口已被关闭（用户点了×但阅读器仍开着），重建主窗口
+                self._recreate_main_window()
             return True
         except Exception as e:
             logger.error(f"显示书架失败: {e}")
             return False
+
+    def _recreate_main_window(self) -> None:
+        """重新创建主书架窗口。
+
+        场景：用户关闭主窗口后，仍保留阅读器窗口；此时从阅读器点击"打开书架"
+        需要重新拉起主窗口。pywebview 6.x 支持在 webview.start() 之后从任意
+        线程调用 create_window（内部会调度到 UI 线程）。
+        """
+        import webview
+        from src.config import APP_DISPLAY_NAME, APP_VERSION, MAIN_WINDOW_HEIGHT
+        from src.web.main import get_html_path
+
+        layout = self.get_home_layout()
+        html_path = get_html_path(layout)
+        window = webview.create_window(
+            title=f'{APP_DISPLAY_NAME} v{APP_VERSION}',
+            url=html_path,
+            js_api=self,
+            width=1200,
+            height=MAIN_WINDOW_HEIGHT,
+            min_size=(900, 650),
+            resizable=True,
+            text_select=True,
+            frameless=True,
+            easy_drag=False,
+            background_color='#0c0c14'
+        )
+        self._window = window
+        self._is_maximized = False
 
     def minimize_window(self) -> bool:
         try:
@@ -111,6 +149,8 @@ class WindowsMixin:
             self._save_immediate()
             if self._window:
                 self._window.destroy()
+                # 清除引用，避免后续 show_bookshelf 等拿到失效对象
+                self._window = None
             return True
         except Exception as e:
             logger.error(f"关闭窗口失败: {e}")
