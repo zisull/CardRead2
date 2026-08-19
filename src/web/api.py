@@ -99,15 +99,22 @@ class Api(BooksMixin, NotesMixin, ReaderMixin, ThemesMixin, WindowsMixin):
             self._ensure_custom_theme_in_core(saved_theme)
         self._theme_manager.current_theme = saved_theme
 
-        if not settings.get('home_bg_image'):
-            default_bg = self._get_default_bg_path()
-            if default_bg:
-                self._data_store.set_setting('home_bg_image', default_bg)
-                self._data_store.set_setting('home_bg_opacity', 0.10)
-                self._data_store.set_setting('reader_bg_image', default_bg)
-                self._data_store.set_setting('reader_bg_opacity', 0.08)
-                self._data_store.set_setting('notes_bg_image', default_bg)
-                self._data_store.set_setting('notes_bg_opacity', 0.08)
+        default_bg = self._get_default_bg_path()
+        if default_bg:
+            defaults = {
+                'home_bg_image': ('home_bg_opacity', 0.10),
+                'reader_bg_image': ('reader_bg_opacity', 0.08),
+                'notes_bg_image': ('notes_bg_opacity', 0.08),
+            }
+            changed = False
+            for image_key, (opacity_key, opacity) in defaults.items():
+                image_path = settings.get(image_key)
+                if not image_path or not os.path.isfile(image_path):
+                    self._data_store.set_setting(image_key, default_bg)
+                    if not settings.get(opacity_key):
+                        self._data_store.set_setting(opacity_key, opacity)
+                    changed = True
+            if changed:
                 self._save_immediate()
 
     def _get_default_bg_path(self) -> Optional[str]:

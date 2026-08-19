@@ -239,8 +239,16 @@
                             const op = (opacity != null) ? (1 - opacity) : 0.85;
                             card.style.background = 'rgba(' + r + ',' + g + ',' + b + ',' + op + ')';
                         }
+                    } else {
+                        document.body.style.background = '';
+                        const card = document.querySelector('.card');
+                        if (card) card.style.background = '';
                     }
-                }).catch(function() {});
+                }).catch(function() {
+                    document.body.style.background = '';
+                    const card = document.querySelector('.card');
+                    if (card) card.style.background = '';
+                });
             } else {
                 document.body.style.background = '';
                 const card = document.querySelector('.card');

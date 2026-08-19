@@ -865,8 +865,23 @@ async function loadSettings() {
         if (window.updateClickBar) updateClickBar('readerBgOpacity');
         if (readerBg) {
             readerBgPath = readerBg;
-            document.getElementById('readerBgStatus').textContent = '✓';
-            document.getElementById('readerBgStatus').style.color = 'var(--accent)';
+            try {
+                const dataUrl = await api().get_image_data_url(readerBg);
+                if (dataUrl) {
+                    document.getElementById('readerBgStatus').textContent = '✓';
+                    document.getElementById('readerBgStatus').style.color = 'var(--accent)';
+                } else {
+                    readerBgPath = null;
+                    settings.reader_bg_image = '';
+                    settings.background_image = '';
+                    document.getElementById('readerBgStatus').textContent = '✗';
+                    document.getElementById('readerBgStatus').style.color = 'var(--danger)';
+                }
+            } catch (e) {
+                readerBgPath = null;
+                settings.reader_bg_image = '';
+                settings.background_image = '';
+            }
         }
 
         const notesBg = settings.notes_bg_image || '';
@@ -887,11 +902,15 @@ async function loadSettings() {
                         document.getElementById('notesBgStatus').style.color = 'var(--accent)';
                     } else {
                         notesBgDataUrl = null;
+                        notesBgPath = null;
+                        settings.notes_bg_image = '';
                         document.getElementById('notesBgStatus').textContent = '✗';
                         document.getElementById('notesBgStatus').style.color = 'var(--danger)';
                     }
                 } catch (e) {
                     notesBgDataUrl = null;
+                    notesBgPath = null;
+                    settings.notes_bg_image = '';
                 }
             }
         }
