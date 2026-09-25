@@ -62,3 +62,6 @@ nuitka-crash-report.xml
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# 未采纳的主题 demo（历史记录里可找回）
+demos/
