@@ -1,7 +1,7 @@
-"""书籍重命名测试
+"""书籍重命名与级联删除测试
 
-覆盖 DbStore/DataStore 的事务式 rename_book 与 BookManager.rename_book
-（物理文件 + 记录 + 书签/进度需一并迁移，失败需回滚）。
+覆盖 DbStore/DataStore 的事务式 rename_book / remove_book / clear_all_books
+与 BookManager.rename_book（物理文件 + 记录 + 书签/进度需一并迁移，失败需回滚）。
 """
 import os
 import tempfile
@@ -77,6 +77,47 @@ class TestDbStoreRename:
         assert store.rename_book('old', 'new', '/tmp/new2.txt') is False
         assert store.get_book('old') is not None
         assert len(store.get_bookmarks('old')) == 2
+
+
+class TestCascadeDelete:
+    """删书必须连带清掉书签与进度：外键约束未开启，级联由 DbStore 在同一事务里显式完成"""
+
+    def test_remove_book_cascades(self, store):
+        _seed_book(store, 'old', '/tmp/old.txt')
+        assert store.remove_book('old') is True
+        assert store.get_book('old') is None
+        assert store.get_bookmarks('old') == []
+        assert store.get_progress('old') is None
+
+    def test_clear_all_books_cascades(self, store):
+        _seed_book(store, 'a', '/tmp/a.txt')
+        _seed_book(store, 'b', '/tmp/b.txt')
+        assert store.clear_all_books() is True
+        assert store.get_books() == []
+        assert store.get_all_bookmarks() == {}
+        assert store.get_all_progress() == {}
+
+    def test_orphans_cleaned_on_open(self, tmp_dir):
+        """历史版本留下的孤儿书签/进度（无对应书籍记录）在打开数据库时被清掉"""
+        cfg = os.path.join(tmp_dir, 'orphan_config.toml')
+        s = DataStore(cfg)
+        s.load()
+        s.add_book({'name': 'gone', 'file_path': '/tmp/gone.txt'})
+        s.add_bookmark('gone', {'chapter': 0, 'position': 1, 'description': 'x'})
+        s.update_progress('gone', 0, 10)
+        conn = s.db_store._get_conn()
+        conn.execute("DELETE FROM books WHERE name = 'gone'")  # 只删父行，模拟旧 bug
+        conn.commit()
+        assert s.get_bookmarks('gone') != []
+        s.close()
+
+        reopened = DataStore(cfg)
+        reopened.load()
+        try:
+            assert reopened.get_bookmarks('gone') == []
+            assert reopened.get_progress('gone') is None
+        finally:
+            reopened.close()
 
 
 class _FailingStore:

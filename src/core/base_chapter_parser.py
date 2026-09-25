@@ -20,6 +20,42 @@ from src.utils.encoding import EncodingDetector
 from src.utils.text_parser import TextParser
 
 
+def cache_path_for(file_path: str, cache_dir: Optional[str]) -> Optional[str]:
+    """算出某本书的解析缓存文件路径（与 BaseChapterParser._get_cache_path 一致）"""
+    if not cache_dir:
+        return None
+    h = hashlib.md5(os.path.abspath(file_path).encode()).hexdigest()[:12]
+    name = os.path.splitext(os.path.basename(file_path))[0]
+    return os.path.join(cache_dir, f'{name}_{h}.cache.gz')
+
+
+def prune_cache_dir(cache_dir: Optional[str], kept_file_paths) -> int:
+    """删掉 cache_dir 下不属于 kept_file_paths 的 .cache.gz，返回删除个数
+
+    缓存文件名含源文件绝对路径的哈希，书名或路径一变旧文件就永远命中不了，
+    只能按「当前书架仍在用的源文件」反向回收。
+    """
+    if not cache_dir or not os.path.isdir(cache_dir):
+        return 0
+    # 两侧都过 normcase + abspath：cache_dir 可能带尾分隔符或写成相对路径，
+    # 不规范化会整体 miss 保留集而误删全部缓存
+    kept = {os.path.normcase(cache_path_for(os.path.abspath(p), cache_dir))
+            for p in kept_file_paths if p}
+    removed = 0
+    for fn in os.listdir(cache_dir):
+        if not fn.endswith('.cache.gz'):
+            continue
+        full = os.path.normcase(os.path.join(os.path.abspath(cache_dir), fn))
+        if full in kept:
+            continue
+        try:
+            os.remove(full)
+            removed += 1
+        except OSError as e:
+            logger.warning(f"清理解析缓存失败: {full}: {e}")
+    return removed
+
+
 class BaseChapterParser(ABC):
     """章节解析器基类
 
@@ -99,11 +135,7 @@ class BaseChapterParser(ABC):
     # ── 公共缓存逻辑 ──
 
     def _get_cache_path(self, file_path: str) -> Optional[str]:
-        if not self._cache_dir:
-            return None
-        h = hashlib.md5(os.path.abspath(file_path).encode()).hexdigest()[:12]
-        name = os.path.splitext(os.path.basename(file_path))[0]
-        return os.path.join(self._cache_dir, f'{name}_{h}.cache.gz')
+        return cache_path_for(file_path, self._cache_dir)
 
     def _load_from_cache(self, file_path: str) -> Optional[Tuple[List[str], List[str], List[str], str]]:
         cache_path = self._get_cache_path(file_path)

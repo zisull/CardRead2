@@ -92,6 +92,7 @@ class Api(BooksMixin, NotesMixin, ReaderMixin, ThemesMixin, WindowsMixin):
                 logger.warning("书架为空且扫描未发现书籍")
         except Exception as e:
             logger.error(f"扫描书籍失败: {e}")
+        self._prune_parse_cache()
 
         settings = self._data_store.get_all_settings()
         saved_theme = settings.get('current_theme', '深渊')

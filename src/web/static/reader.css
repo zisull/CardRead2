@@ -254,20 +254,25 @@
             background: var(--card-bg); border: 1px solid var(--border);
             border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.35);
             padding: 10px 12px; flex-direction: column; gap: 8px;
-            min-width: 290px;
+            /* 必须显式定宽：面板是 shrink-to-fit 的 fixed 盒，中文片段又不可断词，
+               原先只给 min-width 时会被内容撑到超出 496px 的窄阅读窗，左侧被裁掉 */
+            width: min(340px, calc(100vw - 20px));
+            max-width: calc(100vw - 20px);
+            max-height: calc(100vh - 52px);
             backdrop-filter: blur(24px) saturate(150%);
             opacity: 0; visibility: hidden; transform: translateY(-6px) scale(0.97);
             transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.2s;
             display: flex;
         }
         .search-bar.active { opacity: 1; visibility: visible; transform: translateY(0) scale(1); }
-        .search-row { display: flex; align-items: center; gap: 5px; }
-        .search-bar input {
-            flex: 1; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+        .search-row { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; min-width: 0; }
+        .search-bar input[type="text"] {
+            flex: 1 1 auto; min-width: 0;
+            padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
             background: var(--secondary); color: var(--fg); font-size: 12px; font-family: inherit;
             outline: none; transition: all 0.18s ease;
         }
-        .search-bar input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb),0.08); }
+        .search-bar input[type="text"]:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb),0.08); }
         .search-bar input::placeholder { color: var(--tip); opacity: 0.6; }
         .search-btn {
             width: 28px; height: 28px; border: none; border-radius: 6px;
@@ -278,8 +283,8 @@
         .search-btn:hover { background: rgba(255,255,255,0.06); color: var(--fg); }
         .search-btn:disabled { opacity: 0.3; cursor: default; }
         .search-count {
-            font-size: 11px; color: var(--tip); min-width: 60px;
-            text-align: center; flex-shrink: 0; user-select: none; opacity: 0.7;
+            font-size: 11px; color: var(--tip); min-width: 44px;
+            text-align: center; flex: 0 0 auto; user-select: none; opacity: 0.7;
         }
         .search-highlight {
             background: rgba(var(--accent-rgb),0.25); border-radius: 3px;
@@ -292,31 +297,40 @@
         .search-toggle {
             font-size: 11px; color: var(--tip); cursor: pointer;
             display: flex; align-items: center; gap: 5px; user-select: none;
-            transition: color 0.18s;
+            transition: color 0.18s; flex: 0 0 auto;
         }
         .search-toggle:hover { color: var(--fg); }
-        .search-toggle input { cursor: pointer; accent-color: var(--accent); }
+        .search-toggle input {
+            cursor: pointer; accent-color: var(--accent);
+            width: 13px; height: 13px; flex: 0 0 auto;
+        }
         .search-hint {
-            font-size: 10px; color: var(--tip); flex: 1; text-align: right;
+            font-size: 10px; color: var(--tip); flex: 1 1 auto; min-width: 0;
+            text-align: right;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.6;
         }
         .search-results {
-            max-height: 200px; overflow-y: auto; display: none;
+            flex: 1 1 auto; min-height: 0;
+            max-height: min(200px, 45vh);
+            overflow-y: auto; overflow-x: hidden; display: none;
         }
         .search-results.active { display: block; }
-        .search-results::-webkit-scrollbar { width: 4px; }
+        .search-results::-webkit-scrollbar { width: 4px; height: 0; }
         .search-results::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
         .search-result-item {
             padding: 7px 10px; border-radius: 6px; cursor: pointer;
             font-size: 11px; color: var(--fg); transition: all 0.12s ease;
-            margin-bottom: 1px;
+            margin-bottom: 1px; min-width: 0;
         }
         .search-result-item:hover { background: var(--glow); }
         .search-result-chapter {
             font-size: 10px; color: var(--accent); margin-bottom: 3px; font-weight: 500;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .search-result-context {
-            color: var(--tip); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            color: var(--tip); word-break: break-all; line-height: 1.5;
+            display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+            overflow: hidden;
         }
         .search-result-context mark {
             background: rgba(var(--accent-rgb),0.25); color: var(--fg); padding: 0 2px; border-radius: 2px;

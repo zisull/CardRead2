@@ -20,6 +20,7 @@ from src.web.api_helpers import (
     _MAX_IMPORT_SIZE, _MAX_IMAGE_SIZE, _MAX_IMAGE_DATA_URL_SIZE,
     _get_cover_char, _get_pinyin_initials, _get_pinyin_full, _validate_book_name,
 )
+from src.core.base_chapter_parser import prune_cache_dir
 from src.utils.decorators import handle_api_error
 
 
@@ -31,6 +32,26 @@ class BooksMixin:
     def _invalidate_books_cache(self) -> None:
         self._books_cache_dirty = True
         self._cached_stats_from_books = None
+
+    def _prune_parse_cache(self, allow_empty: bool = False) -> None:
+        """回收书架上已不存在书籍的章节解析缓存
+
+        缓存文件名派生源文件绝对路径，删书/改名后旧文件再也不会被命中，
+        不加回收的话 cache 目录只增不减。
+
+        Args:
+            allow_empty: 书架为空时是否仍然清空整个缓存目录。默认不清空，
+                避免把「书架暂时读不出来」误判成「一本书都没有」而全删。
+        """
+        try:
+            paths = [b.file_path for b in self._book_manager.get_all_books_list()]
+            if not paths and not allow_empty:
+                return
+            removed = prune_cache_dir(self._dirs.get('cache'), paths)
+            if removed:
+                logger.info(f"已清理解析缓存 {removed} 个")
+        except Exception as e:
+            logger.warning(f"清理解析缓存失败: {e}")
 
     def get_books(self) -> List[Dict[str, Any]]:
         if not self._books_cache_dirty and self._books_cache is not None:
@@ -447,13 +468,13 @@ class BooksMixin:
                 with suppress(OSError):
                     os.remove(book.file_path)
             if self._book_manager.remove_book(book_name):
-                self._data_store.remove_progress(book_name)
-                self._data_store.remove_book_bookmarks(book_name)
+                # 书签与阅读进度已在 remove_book 的同一事务内级联删除
                 self._cover_cache.pop(book_name, None)
                 self._preview_cache.pop(book_name, None)
                 # 清理搜索索引，避免 DB 残留膨胀 + 搜索返回已删书籍的无效结果
                 with suppress(Exception):
                     self._search_index.remove_book(book_name)
+                self._prune_parse_cache()
                 self._save_immediate()
                 self._invalidate_books_cache()
                 return True
@@ -463,7 +484,7 @@ class BooksMixin:
             return False
 
     def clear_bookshelf(self) -> Dict[str, Any]:
-        """清空整个书架：删除所有书籍文件 + 阅读进度 + 书签 + 搜索索引。
+        """清空整个书架：删除所有书籍文件 + 阅读进度 + 书签 + 搜索索引 + 解析缓存。
 
         Returns:
             {'success': bool, 'deleted_files': int, 'error': str}
@@ -490,25 +511,21 @@ class BooksMixin:
                     self._data_store.stop_reading_session(book_name)
             self._current_book = None
 
-            # 3. 清空书籍物理文件 + books 表
+            # 3. 清空书籍物理文件 + books 表（书签与阅读进度在同一事务内级联删除）
             deleted_files = self._book_manager.clear_all_books(delete_files=True)
 
-            # 4. 清空所有书签
-            self._data_store.clear_all_bookmarks()
-
-            # 5. 清空所有阅读进度
-            self._data_store.clear_all_progress()
-
-            # 6. 清空封面/预览缓存
+            # 4. 清空封面/预览缓存 + 章节解析缓存
             with suppress(Exception):
                 self._cover_cache.clear()
                 self._preview_cache.clear()
+            self._prune_parse_cache(allow_empty=True)
 
-            # 7. 清空搜索索引
+            # 5. 清空搜索索引（DELETE 不回收页，VACUUM 才能把 DB 还给磁盘）
             with suppress(Exception):
                 self._search_index.clear_all()
+                self._search_index.vacuum()
 
-            # 8. 保存并失效书架缓存
+            # 6. 保存并失效书架缓存
             self._save_immediate()
             self._invalidate_books_cache()
 
@@ -543,6 +560,8 @@ class BooksMixin:
                 # 删除旧书名的搜索索引（FTS5 不支持 UPDATE 文档），新书名打开时自动重建
                 with suppress(Exception):
                     self._search_index.remove_book(old_name)
+                # 源路径变了，旧路径的解析缓存永远不会再命中
+                self._prune_parse_cache()
                 self._save_immediate()
                 self._invalidate_books_cache()
                 return {'success': True, 'new_name': renamed}

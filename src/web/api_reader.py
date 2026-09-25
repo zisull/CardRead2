@@ -248,9 +248,13 @@ class ReaderMixin:
             max_results = min(max(1, max_results), SEARCH_MAX_RESULTS_LIMIT)
             if self._search_index.is_indexed(book_name):
                 results = self._search_index.search(query, book_name, max_results)
-                if results:
-                    return {'success': True, 'results': results, 'total': len(results)}
-            # fallback：锁内取 engine 引用，锁外执行正则扫描，避免持锁阻塞翻页等操作
+                # 索引已建好时空结果就是「书中确实没有」，不能再退回逐章正则扫描：
+                # 那会把全书重新渲染一遍（数百章、秒级），却仍然一无所获
+                total = len(results)
+                if total >= max_results:
+                    total = self._search_index.count(query, book_name)
+                return {'success': True, 'results': results, 'total': total}
+            # 尚未索引：锁内取 engine 引用，锁外执行正则扫描，避免持锁阻塞翻页等操作
             with self._engines_lock:
                 if book_name not in self._reading_engines:
                     return {'success': False, 'error': '书籍未加载'}
@@ -271,6 +275,8 @@ class ReaderMixin:
                         end = min(len(content), idx + len(query) + 20)
                         context = content[start:end]
                         results.append({'chapter': i, 'position': idx, 'context': context})
+            # 顺手补建索引，下一次检索即可走 FTS
+            self._index_book_async(book_name, engine)
             return {'success': True, 'results': results, 'total': total_matches}
         except Exception as e:
             logger.error(f"全文检索失败: {e}")

@@ -3,6 +3,7 @@
 测试 SearchIndex 的索引创建、搜索、删除和事务安全。
 """
 import os
+import sqlite3
 import tempfile
 import pytest
 
@@ -142,3 +143,62 @@ class TestSearchIndex:
         results = indexed_index.search('第二章', 'test_book')
         if results:
             assert results[0]['chapter'] == 1
+
+
+class TestCjkSearch:
+    """中文正文（无空格分词）必须能做子串检索
+
+    FTS5 的 unicode61 会把一整串汉字当作一个 token，正文里没有空格时
+    「杨过」这类词永远匹配不到，只能靠逐章正则全量扫描兜底。
+    """
+
+    TEXT = '独孤求败在剑冢之中留下遗刻，杨过初见此字大奇。He walked slowly into the cave.'
+
+    @pytest.fixture
+    def cjk_index(self, index):
+        index.index_book('cjk_book', [self.TEXT, '第二章 楚月转身离去，月色如水。'])
+        return index
+
+    def test_two_char_word_matches(self, cjk_index):
+        for word in ('独孤', '杨过', '求败', '剑冢', '楚月'):
+            assert cjk_index.search(word, 'cjk_book'), f'{word} 应命中'
+
+    def test_multi_char_word_matches(self, cjk_index):
+        results = cjk_index.search('留下遗刻', 'cjk_book')
+        assert len(results) == 1
+        assert results[0]['chapter'] == 0
+
+    def test_absent_word_returns_no_hit(self, cjk_index):
+        assert cjk_index.search('林冲', 'cjk_book') == []
+
+    def test_snippet_has_no_injected_spaces(self, cjk_index):
+        ctx = cjk_index.search('杨过', 'cjk_book')[0]['context']
+        assert '杨过' in ctx
+        assert '<<<' not in ctx and '>>>' not in ctx
+
+    def test_ascii_word_still_matches(self, cjk_index):
+        assert len(cjk_index.search('cave', 'cjk_book')) == 1
+
+    def test_mixed_query_matches(self, cjk_index):
+        assert len(cjk_index.search('剑冢之中', 'cjk_book')) == 1
+
+    def test_count_matches_all_hits(self, cjk_index):
+        cjk_index.index_book('many', ['月色真美'] * 7)
+        assert cjk_index.count('月色', 'many') == 7
+        assert len(cjk_index.search('月色', 'many', max_results=3)) == 3
+
+    def test_index_version_upgrade_discards_old_index(self, db_path):
+        idx = SearchIndex(db_path)
+        idx.index_book('book', ['独孤求败'])
+        idx.close()
+        # 手工把版本标记改回旧值，模拟升级前的索引库
+        conn = sqlite3.connect(db_path)
+        conn.execute("INSERT OR REPLACE INTO index_meta (key, value) VALUES ('index_version', 'legacy')")
+        conn.commit()
+        conn.close()
+        reopened = SearchIndex(db_path)
+        try:
+            assert reopened.is_indexed('book') is False
+            assert reopened.search('独孤', 'book') == []
+        finally:
+            reopened.close()

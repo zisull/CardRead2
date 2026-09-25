@@ -93,6 +93,15 @@ class DbStore:
 
                 CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at);
             """)
+            # 旧版本删书时不级联子表（外键约束一直未开启），残留的孤儿书签/进度行
+            # 既占空间又会让「有书签的书」列表出现已删除的书名，启动时一次性清掉
+            orphans = 0
+            for table in ('bookmarks', 'reading_progress'):
+                orphans += conn.execute(
+                    f"DELETE FROM {table} WHERE book_name NOT IN (SELECT name FROM books)"
+                ).rowcount
+            if orphans:
+                logger.info(f"已清理孤儿书签/进度记录: {orphans} 条")
             conn.commit()
 
     def close(self) -> None:
@@ -182,18 +191,22 @@ class DbStore:
                 return False
 
     def remove_book(self, name: str) -> bool:
-        """移除书籍记录
+        """移除书籍记录，并在同一事务内级联删除其书签与阅读进度
 
-        注意：未开启 SQLite 外键约束，本方法不会级联删除 bookmarks / reading_progress，
-        调用方需自行清理（见 api_books.delete_book）。
+        不依赖 PRAGMA foreign_keys：books 走 INSERT OR REPLACE 更新，
+        开启外键后 REPLACE 会隐式删掉父子行（书签/进度被抹），故在此显式级联。
         """
         with self._lock:
+            conn = self._get_conn()
             try:
-                conn = self._get_conn()
+                conn.execute("DELETE FROM bookmarks WHERE book_name = ?", (name,))
+                conn.execute("DELETE FROM reading_progress WHERE book_name = ?", (name,))
                 conn.execute("DELETE FROM books WHERE name = ?", (name,))
                 conn.commit()
                 return True
             except Exception as e:
+                with suppress(Exception):
+                    conn.rollback()
                 logger.error(f"移除书籍失败: {e}")
                 return False
 
@@ -235,14 +248,18 @@ class DbStore:
                 return False
 
     def clear_all_books(self) -> bool:
-        """清空所有书籍记录（不级联清理进度/书签，调用方需自行处理）"""
+        """清空所有书籍记录，并在同一事务内级联删除全部书签与阅读进度"""
         with self._lock:
+            conn = self._get_conn()
             try:
-                conn = self._get_conn()
+                conn.execute("DELETE FROM bookmarks")
+                conn.execute("DELETE FROM reading_progress")
                 conn.execute("DELETE FROM books")
                 conn.commit()
                 return True
             except Exception as e:
+                with suppress(Exception):
+                    conn.rollback()
                 logger.error(f"清空书籍失败: {e}")
                 return False
 

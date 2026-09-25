@@ -5,6 +5,7 @@
 线程安全：支持跨线程使用。
 """
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -15,6 +16,22 @@ from loguru import logger
 
 from src.config import FTS5_MAX_RESULTS_DEFAULT
 
+# 索引内容里汉字之间插入空格分隔符，让每个汉字成为独立 token；
+# FTS5 的 unicode61 会把一整串中文当作一个词，「杨过」这类词永远匹配不到
+_CJK = '\\u3400-\\u4dbf\\u4e00-\\u9fff\\uf900-\\ufaff'
+_CJK_BOUNDARY_RE = re.compile(f'(?<=[{_CJK}])(?=[{_CJK}])')
+_CJK_SPACED_RE = re.compile(f'(?<=[{_CJK}]) (?=[{_CJK}])')
+
+
+def _split_cjk(text: str) -> str:
+    """索引前处理：汉字之间插入分隔符"""
+    return _CJK_BOUNDARY_RE.sub(' ', text)
+
+
+def _join_cjk(text: str) -> str:
+    """结果后处理：还原 _split_cjk 插入的分隔符"""
+    return _CJK_SPACED_RE.sub('', text)
+
 
 class SearchIndex:
     """全文搜索索引
@@ -22,7 +39,7 @@ class SearchIndex:
     使用 SQLite FTS5 实现高效的全文搜索。
     
     特性:
-    - 支持中英文混合搜索
+    - 支持中英文混合搜索（汉字按单字建 token，短语查询等价于子串匹配）
     - 增量索引更新
     - 高效的全文检索
     - 线程安全：支持跨线程使用
@@ -30,6 +47,9 @@ class SearchIndex:
     Attributes:
         db_path: 数据库文件路径
     """
+
+    # 分词方案版本；变更后旧索引会给出错误结果，启动时整体废弃并按需重建
+    INDEX_VERSION = 'cjk-split-v1'
     
     def __init__(self, db_path: str):
         """初始化搜索索引
@@ -73,7 +93,22 @@ class SearchIndex:
                     indexed_at REAL
                 )
             """)
-            
+
+            # 分词版本变更（例如从不支持的整词切分改为逐字切分）会让旧索引静默给出错误结果，
+            # 这里直接废弃旧索引；书籍下次打开时会自动重建
+            self._conn.execute("CREATE TABLE IF NOT EXISTS index_meta (key TEXT PRIMARY KEY, value TEXT)")
+            row = self._conn.execute(
+                "SELECT value FROM index_meta WHERE key = 'index_version'"
+            ).fetchone()
+            if not row or row[0] != self.INDEX_VERSION:
+                self._conn.execute("DELETE FROM book_content")
+                self._conn.execute("DELETE FROM index_metadata")
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO index_meta (key, value) VALUES ('index_version', ?)",
+                    (self.INDEX_VERSION,)
+                )
+                logger.info(f"搜索索引分词版本已升级，旧索引作废: {self.db_path}")
+
             self._conn.commit()
             logger.debug(f"搜索索引初始化完成: {self.db_path}")
         except Exception as e:
@@ -180,7 +215,7 @@ class SearchIndex:
                     )
                     
                     # 插入新索引（批量 executemany，见 2.5 优化）
-                    rows = [(book_name, i, c) for i, c in enumerate(chapters) if c]
+                    rows = [(book_name, i, _split_cjk(c)) for i, c in enumerate(chapters) if c]
                     if rows:
                         self._conn.executemany(
                             "INSERT INTO book_content (book_name, chapter_index, content) VALUES (?, ?, ?)",
@@ -228,8 +263,9 @@ class SearchIndex:
         try:
             start_time = time.time()
 
-            # 转义为 FTS5 短语查询，避免特殊字符（"*"/"/AND"/OR 等）触发语法错误
-            fts5_query = '"' + query.replace('"', '""') + '"'
+            # 转义为 FTS5 短语查询，避免特殊字符（"*"/"/AND"/OR 等）触发语法错误；
+            # 查询与索引同样做逐字切分，短语的相邻 token 即等价于子串匹配
+            fts5_query = '"' + _split_cjk(query).replace('"', '""').replace('\n', ' ').strip() + '"'
 
             with self._lock:
                 # 构建查询
@@ -262,7 +298,7 @@ class SearchIndex:
                     results.append({
                         'book_name': result_book_name,
                         'chapter': chapter_index,
-                        'context': snippet.replace('<<<', '').replace('>>>', ''),
+                        'context': _join_cjk(snippet.replace('<<<', '').replace('>>>', '')),
                     })
             
             elapsed = time.time() - start_time
@@ -274,6 +310,28 @@ class SearchIndex:
             logger.error(f"搜索失败: '{query}': {e}")
             return []
     
+    def count(self, query: str, book_name: str = None) -> int:
+        """统计关键词的命中条数（用于结果被 max_results 截断时给出真实总数）"""
+        if not self._conn or not query or not query.strip():
+            return 0
+        try:
+            fts5_query = '"' + _split_cjk(query).replace('"', '""').replace('\n', ' ').strip() + '"'
+            with self._lock:
+                if book_name:
+                    row = self._conn.execute(
+                        "SELECT count(*) FROM book_content WHERE book_name = ? AND content MATCH ?",
+                        (book_name, fts5_query)
+                    ).fetchone()
+                else:
+                    row = self._conn.execute(
+                        "SELECT count(*) FROM book_content WHERE content MATCH ?",
+                        (fts5_query,)
+                    ).fetchone()
+            return int(row[0]) if row else 0
+        except Exception as e:
+            logger.error(f"统计匹配数失败: '{query}': {e}")
+            return 0
+
     def remove_book(self, book_name: str) -> bool:
         """删除书籍索引
         

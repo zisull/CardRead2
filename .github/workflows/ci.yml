@@ -1,0 +1,41 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    name: Unit tests (${{ matrix.os }})
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # 测试只覆盖 src/core、src/parsers、src/utils，不加载 GUI 后端（pywebview/pythonnet）
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest confull chardet loguru ebooklib beautifulsoup4 lxml mobi mistune pypinyin
+
+      - name: Run tests
+        shell: bash
+        run: python -m pytest tests/ -q
