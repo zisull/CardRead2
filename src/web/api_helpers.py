@@ -3,6 +3,7 @@
 从 api.py 中提取的模块级定义，供 Api 类方法内部使用。
 """
 import re
+from functools import lru_cache
 from enum import Enum
 from typing import Any, Optional
 
@@ -44,6 +45,7 @@ def _detect_chapter_level(title: str) -> int:
     return 1
 
 
+@lru_cache(maxsize=1024)
 def _get_cover_char(name: str) -> str:
     if not name:
         return '?'
@@ -64,6 +66,7 @@ def _get_cover_char(name: str) -> str:
     return name[0].upper() if name else '?'
 
 
+@lru_cache(maxsize=1024)
 def _get_pinyin_initials(name: str) -> str:
     """将名称转换为拼音首字母串（用于首字母搜索）。
 
@@ -102,6 +105,7 @@ def _get_pinyin_initials(name: str) -> str:
     return ''.join(parts)
 
 
+@lru_cache(maxsize=1024)
 def _get_pinyin_full(name: str) -> str:
     """将名称转换为全拼音串（用于全拼音搜索）。
 

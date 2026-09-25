@@ -62,25 +62,26 @@ class BooksMixin:
         stats_word_count_sum = 0
         stats_total_progress = 0
         stats_books_with_progress = 0
+        # 一次取全量进度，替代每本书两次 get_progress 查询（书架 N 本 → 2N 次查询）
+        all_progress = self._data_store.get_all_progress()
         for book in books:
             try:
                 if not book.file_exists():
                     skipped_no_file += 1
                     logger.debug(f"跳过文件不存在: {book.name} -> {book.file_path}")
                     continue
-                book_info = self._serialize_single_book(book)
+                progress_data = all_progress.get(book.name)
+                book_info = self._serialize_single_book(book, progress_data)
                 if book_info:
                     result.append(book_info)
                     stats_total_chapters += book_info.get('chapters', 0)
                     stats_word_count_sum += book_info.get('word_count', 0)
                     # 累计进度百分比，避免 get_stats 重复遍历计算
                     total_chapters = book.total_chapters or 0
-                    if total_chapters > 0:
-                        progress_data = self._data_store.get_progress(book.name)
-                        if progress_data:
-                            chapter = progress_data.get('chapter', 0)
-                            stats_total_progress += min(100, int((chapter + 1) / total_chapters * 100))
-                            stats_books_with_progress += 1
+                    if total_chapters > 0 and progress_data:
+                        chapter = progress_data.get('chapter', 0)
+                        stats_total_progress += min(100, int((chapter + 1) / total_chapters * 100))
+                        stats_books_with_progress += 1
             except Exception as e:
                 logger.warning(f"序列化书籍失败 [{book.name}]: {e}")
                 continue
@@ -92,8 +93,7 @@ class BooksMixin:
         }
         return result, skipped_no_file, stats
 
-    def _serialize_single_book(self, book) -> Optional[Dict[str, Any]]:
-        progress_data = self._data_store.get_progress(book.name)
+    def _serialize_single_book(self, book, progress_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         has_progress = progress_data is not None
         word_count = book.word_count or 0
         if word_count >= 10000:
@@ -201,17 +201,22 @@ class BooksMixin:
         else:
             books = self._book_manager.get_all_books_list()
             total_books = len(books)
-            total_chapters = sum((book.total_chapters or 0) for book in books if book.file_exists())
-            # 缓存未命中时计算 progress_percent（缓存命中时已在 _serialize_books 算好）
+            # 单次遍历 + 一次性批量取进度，避免每本书两次 file_exists 与一次 get_progress
+            all_progress = self._data_store.get_all_progress()
+            total_chapters = 0
             total_progress = 0
             books_with_progress = 0
             for book in books:
                 try:
-                    if book.file_exists() and (book.total_chapters or 0) > 0:
-                        progress_data = self._data_store.get_progress(book.name)
+                    if not book.file_exists():
+                        continue
+                    book_chapters = book.total_chapters or 0
+                    total_chapters += book_chapters
+                    if book_chapters > 0:
+                        progress_data = all_progress.get(book.name)
                         if progress_data:
                             chapter = progress_data.get('chapter', 0)
-                            total_progress += min(100, int((chapter + 1) / (book.total_chapters or 1) * 100))
+                            total_progress += min(100, int((chapter + 1) / book_chapters * 100))
                             books_with_progress += 1
                 except Exception:
                     continue
@@ -524,29 +529,23 @@ class BooksMixin:
             with self._engines_lock:
                 if old_name in self._reading_engines:
                     return {'success': False, 'error': '书籍正在阅读中，无法重命名'}
-            if self._book_manager.rename_book(old_name, new_name):
-                old_progress = self._data_store.get_progress(old_name)
-                if old_progress:
-                    self._data_store.update_progress(new_name, old_progress['chapter'], old_progress['scroll_percent'])
-                    self._data_store.remove_progress(old_name)
-                old_bookmarks = self._data_store.get_bookmarks(old_name)
-                if old_bookmarks:
-                    for bm in old_bookmarks:
-                        self._data_store.add_bookmark(new_name, bm)
-                    self._data_store.remove_book_bookmarks(old_name)
+            renamed = self._book_manager.rename_book(old_name, new_name)
+            if renamed:
+                # 书签与阅读进度已在 rename_book 的同一事务内迁移；
+                # 后续内存结构必须以「实际生效书名」为键，而非用户原始输入（非法字符会被清洗）
                 with self._windows_lock:
                     if old_name in self._reader_windows:
-                        self._reader_windows[new_name] = self._reader_windows.pop(old_name)
+                        self._reader_windows[renamed] = self._reader_windows.pop(old_name)
                 if old_name in self._preview_cache:
-                    self._preview_cache[new_name] = self._preview_cache.pop(old_name)
+                    self._preview_cache[renamed] = self._preview_cache.pop(old_name)
                 if old_name in self._cover_cache:
-                    self._cover_cache[new_name] = self._cover_cache.pop(old_name)
+                    self._cover_cache[renamed] = self._cover_cache.pop(old_name)
                 # 删除旧书名的搜索索引（FTS5 不支持 UPDATE 文档），新书名打开时自动重建
                 with suppress(Exception):
                     self._search_index.remove_book(old_name)
                 self._save_immediate()
                 self._invalidate_books_cache()
-                return {'success': True, 'new_name': new_name}
+                return {'success': True, 'new_name': renamed}
             return {'success': False, 'error': '重命名失败，名称可能已存在'}
         except Exception as e:
             logger.error(f"重命名书籍失败: {e}")

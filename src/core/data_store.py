@@ -368,8 +368,12 @@ class DataStore:
         return self.db_store.update_book(name, updates)
 
     def remove_book(self, name: str) -> bool:
-        """移除书籍及其相关数据"""
+        """移除书籍记录（不级联清理进度/书签，调用方需自行处理）"""
         return self.db_store.remove_book(name)
+
+    def rename_book(self, old_name: str, new_name: str, new_file_path: str) -> bool:
+        """重命名书籍并在同一事务内迁移书签与阅读进度"""
+        return self.db_store.rename_book(old_name, new_name, new_file_path)
 
     def clear_all_books(self) -> bool:
         """清空所有书籍记录（不级联清理进度/书签，调用方需自行处理）"""

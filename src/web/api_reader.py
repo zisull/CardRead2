@@ -61,14 +61,27 @@ class ReaderMixin:
     def _index_book_async(self, book_name: str, engine: ReadingEngine):
         def _do_index():
             try:
+                if not engine.is_loaded:
+                    return
+                expected_count = engine.chapter_count
+                if expected_count <= 0:
+                    return
                 if self._search_index.is_indexed(book_name):
                     indexed_count = self._search_index.get_indexed_chapter_count(book_name)
-                    if indexed_count == engine.chapter_count:
+                    if indexed_count == expected_count:
                         return
                 chapters = []
-                for i in range(engine.chapter_count):
+                for i in range(expected_count):
+                    # 后台索引期间用户可能关书，clear() 之后取到的全是空内容；
+                    # 继续写入会把已有索引删成 0 章，搜索永久失效
+                    if not engine.is_loaded:
+                        logger.info(f"搜索索引中止（书籍已关闭）: {book_name}")
+                        return
                     content = engine.get_chapter_content(i)
                     chapters.append(content or '')
+                if not engine.is_loaded:
+                    logger.info(f"搜索索引中止（书籍已关闭）: {book_name}")
+                    return
                 self._search_index.index_book(book_name, chapters)
                 logger.info(f"搜索索引创建完成: {book_name}")
             except Exception as e:

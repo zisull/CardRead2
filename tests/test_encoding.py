@@ -130,3 +130,57 @@ class TestEncodingDetector:
         raw = 'hello'.encode('utf-8')
         detector.detect_from_bytes(raw)
         assert len(detector._encoding_cache) == 0
+
+
+class TestReadFileFallback:
+    """回退路径改为「字节只读一次 + 内存逐个试解」，结果需与文本模式等价"""
+
+    def test_fallback_matches_text_mode_read(self, detector, tmp_dir, monkeypatch):
+        text = ('第一章 风起\r\n中文与English混排的内容\r\n'
+                '第二行用孤立回车\r第三行用普通回车\n结束\r\n') * 4
+        path = _write_file(tmp_dir, 'fallback_gbk.txt', text.encode('gbk'))
+        # 强制首选编码，使主路径必然解码失败，从而走回退分支
+        monkeypatch.setattr(detector, 'detect', lambda p: 'utf-8')
+
+        content, enc = detector.read_file(path)
+
+        assert enc == 'gb18030'
+        assert content == open(path, 'r', encoding=enc).read()
+        assert '\r' not in content
+
+    @staticmethod
+    def _legacy_read(path, forced_encoding):
+        """改造前的实现：主编码失败后逐个候选「重新打开并全量读取」，逐字节保留其语义"""
+        from src.utils.encoding import COMMON_ENCODINGS
+        try:
+            with open(path, 'r', encoding=forced_encoding) as f:
+                return f.read(), forced_encoding
+        except UnicodeDecodeError:
+            pass
+        for fb in COMMON_ENCODINGS:
+            if fb != forced_encoding:
+                try:
+                    with open(path, 'r', encoding=fb) as f:
+                        return f.read(), fb
+                except (UnicodeDecodeError, OSError):
+                    continue
+        with open(path, 'r', encoding='gb18030', errors='ignore') as f:
+            return f.read(), 'gb18030 (errors ignored)'
+
+    @pytest.mark.parametrize('forced', ['utf-8', 'gbk', 'big5', 'shift_jis', 'utf-16-le', 'cp1252'])
+    @pytest.mark.parametrize('sample', [
+        '第一章 风起\r\n中文与English混排\r孤立回车\n普通回车\n',
+        'plain ascii text\r\nonly\r\n',
+        '日本語テスト\r\n한국어 그리고 ☃  snowman\n',
+    ])
+    def test_new_read_is_equivalent_to_legacy(self, detector, tmp_dir, monkeypatch, forced, sample):
+        path = _write_file(tmp_dir, f'eq_{abs(hash((forced, sample))) % 10**8}.txt',
+                           sample.encode('utf-8'))
+        # 让主路径读的是「另一份内容」的等价物：统一以 utf-8 落盘，只改变首选解码编码
+        monkeypatch.setattr(detector, 'detect', lambda p: forced)
+        expected = self._legacy_read(path, forced)
+        assert detector.read_file(path) == expected
+
+    def test_translate_newlines(self, detector):
+        assert detector._translate_newlines('a\r\nb\rc\n') == 'a\nb\nc\n'
+        assert detector._translate_newlines('a\n\n\r\nb') == 'a\n\n\nb'

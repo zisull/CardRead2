@@ -144,30 +144,41 @@ class BookManager:
             logger.error(f"导入失败: {book_name}: {type(e).__name__}: {e}")
             return None
 
-    def rename_book(self, old_name: str, new_name: str) -> bool:
+    def rename_book(self, old_name: str, new_name: str) -> Optional[str]:
+        """重命名书籍（物理文件 + 记录 + 书签/进度，同一本书的关联数据一并迁移）
+
+        Args:
+            old_name: 原书名
+            new_name: 期望的新书名，内部会清洗非法字符
+
+        Returns:
+            实际生效的书名（可能与传入不同）；失败返回 None
+        """
         book = self.get_book(old_name)
         if not book or old_name == new_name:
-            return False
+            return None
         clean_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', new_name).strip('. ')
         if not clean_name or self.has_book(clean_name):
-            return False
+            return None
         old_path = book.file_path
         ext = Path(old_path).suffix
         new_path = str(Path(self.books_dir) / (clean_name + ext))
         if Path(new_path).exists():
-            return False
+            return None
         try:
             os.rename(old_path, new_path)
         except OSError:
-            return False
+            return None
 
         if self.data_store:
-            self.data_store.remove_book(old_name)
-            book_data = book.to_dict()
-            book_data['name'] = clean_name
-            book_data['file_path'] = new_path
-            self.data_store.add_book(book_data)
-        return True
+            if not self.data_store.rename_book(old_name, clean_name, new_path):
+                # 库内更新失败则回滚物理文件名，避免文件与记录指向不一致
+                try:
+                    os.rename(new_path, old_path)
+                except OSError:
+                    logger.error(f"重命名回滚失败，文件已改名但记录未更新: {new_path} -> {old_path}")
+                return None
+        return clean_name
 
     def remove_book(self, name: str, delete_file: bool = False) -> bool:
         """移除书籍

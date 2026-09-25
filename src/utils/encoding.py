@@ -180,6 +180,11 @@ class EncodingDetector:
             return 'latin1'
         return encoding
 
+    @staticmethod
+    def _translate_newlines(content: str) -> str:
+        """复刻文本模式 newline=None 的通用换行转换（\r\n 与孤立 \r 都变成 \n）"""
+        return content.replace('\r\n', '\n').replace('\r', '\n')
+
     def read_file(self, file_path: str) -> Tuple[str, str]:
         if not os.path.isfile(file_path):
             raise FileNotFoundError(f"文件不存在: {file_path}")
@@ -193,14 +198,21 @@ class EncodingDetector:
         except UnicodeDecodeError:
             pass
 
-        for fallback in COMMON_ENCODINGS:
-            if fallback != encoding:
-                try:
-                    with open(file_path, 'r', encoding=fallback) as f:
-                        content = f.read()
-                    return content, fallback
-                except (UnicodeDecodeError, OSError):
-                    continue
+        # 回退：整份文件只读一次字节，逐个候选编码在内存中试解，
+        # 避免每个候选都重开并重读整个文件（最坏情况十余次全量 IO）
+        try:
+            with open(file_path, 'rb') as f:
+                raw = f.read()
+        except OSError:
+            raw = None
+
+        if raw is not None:
+            for fallback in COMMON_ENCODINGS:
+                if fallback != encoding:
+                    try:
+                        return self._translate_newlines(raw.decode(fallback)), fallback
+                    except UnicodeDecodeError:
+                        continue
 
         try:
             with open(file_path, 'r', encoding='gb18030', errors='ignore') as f:

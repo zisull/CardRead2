@@ -384,19 +384,22 @@ class EpubParser(BaseParser):
         if not body:
             body = soup
 
-        for tag in body.find_all(['script', 'style', 'link']):
+        for tag in body.find_all(['script', 'style', 'link', 'iframe', 'object', 'embed']):
             tag.decompose()
 
         for tag in body.find_all(True):
-            if tag.get('style'):
-                del tag['style']
-            if tag.get('class'):
-                del tag['class']
+            for attr in list(tag.attrs):
+                # 书籍文件本身可能内嵌事件处理器（onerror 等），渲染层不需要也不应执行
+                if attr in ('style', 'class') or attr.lower().startswith('on'):
+                    del tag[attr]
 
         if name_to_chapter:
             for a in body.find_all('a'):
                 href = a.get('href', '').strip()
                 if not href or href.startswith(('http://', 'https://', '#', 'mailto:')):
+                    continue
+                if href.lower().startswith('javascript:'):
+                    a.unwrap()
                     continue
                 parts = href.split('#', 1)
                 file_part = parts[0]

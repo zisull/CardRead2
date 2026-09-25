@@ -5,6 +5,7 @@
 """
 import sqlite3
 import threading
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
@@ -181,7 +182,11 @@ class DbStore:
                 return False
 
     def remove_book(self, name: str) -> bool:
-        """移除书籍及其相关数据"""
+        """移除书籍记录
+
+        注意：未开启 SQLite 外键约束，本方法不会级联删除 bookmarks / reading_progress，
+        调用方需自行清理（见 api_books.delete_book）。
+        """
         with self._lock:
             try:
                 conn = self._get_conn()
@@ -190,6 +195,43 @@ class DbStore:
                 return True
             except Exception as e:
                 logger.error(f"移除书籍失败: {e}")
+                return False
+
+    def rename_book(self, old_name: str, new_name: str, new_file_path: str) -> bool:
+        """重命名书籍，并在同一事务内迁移其书签与阅读进度
+
+        替代「remove_book + add_book」两步写法：后者在中途失败时会让书籍从库中消失。
+
+        Args:
+            old_name: 原书名
+            new_name: 新书名
+            new_file_path: 新的文件路径（调用方已完成物理改名）
+
+        Returns:
+            是否全部成功；失败时事务回滚，库内数据保持原样
+        """
+        with self._lock:
+            conn = self._get_conn()
+            try:
+                # 不显式 BEGIN：交由 sqlite3 的隐式事务，全部语句共用一个事务，commit 前失败可整体回滚
+                # 目标名若残留孤儿进度行（无对应书籍记录）会撞主键，先清掉，等价于旧代码的 INSERT OR REPLACE
+                conn.execute("DELETE FROM reading_progress WHERE book_name = ?", (new_name,))
+                cur = conn.execute("UPDATE books SET name = ?, file_path = ? WHERE name = ?",
+                                   (new_name, new_file_path, old_name))
+                if cur.rowcount != 1:
+                    conn.rollback()
+                    logger.error(f"重命名书籍失败: 未找到原记录 {old_name}")
+                    return False
+                conn.execute("UPDATE bookmarks SET book_name = ? WHERE book_name = ?",
+                             (new_name, old_name))
+                conn.execute("UPDATE reading_progress SET book_name = ? WHERE book_name = ?",
+                             (new_name, old_name))
+                conn.commit()
+                return True
+            except Exception as e:
+                with suppress(Exception):
+                    conn.rollback()
+                logger.error(f"重命名书籍失败: {old_name} -> {new_name}: {e}")
                 return False
 
     def clear_all_books(self) -> bool:

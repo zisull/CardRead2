@@ -13,9 +13,10 @@ import time
 PROCESS_QUERY_LIMITED_INFORMATION = 0x0400
 STILL_ACTIVE = 259
 
-# 日志 rotation 大小
-LOG_ROTATION_SIZE = "1 MB"
-ERROR_LOG_ROTATION_SIZE = "512 KB"
+# 日志 rotation 大小（定义见 src/utils/logging_config.py，此处保留兼容引用）
+from src.utils.logging_config import (  # noqa: E402
+    LOG_ROTATION_SIZE, ERROR_LOG_ROTATION_SIZE, configure_logging,
+)
 
 
 def _get_file_this():
@@ -262,21 +263,7 @@ def _release_file_lock():
 
 
 def setup_logging():
-    log_dir = get_appdata_dir()
-    try:
-        os.makedirs(log_dir, exist_ok=True)
-        log_file = os.path.join(log_dir, 'cardread_web.log')
-        error_log_file = os.path.join(log_dir, 'cardread_error.log')
-
-        logger.remove()
-        logger.add(log_file, rotation=LOG_ROTATION_SIZE, retention="7 days", encoding="utf-8", level="DEBUG")
-        logger.add(error_log_file, rotation=ERROR_LOG_ROTATION_SIZE, retention="30 days", encoding="utf-8", level="ERROR")
-        if sys.stderr is not None:
-            logger.add(sys.stderr, level="INFO")
-    except Exception:
-        logger.remove()
-        if sys.stderr is not None:
-            logger.add(sys.stderr, level="INFO")
+    configure_logging(get_appdata_dir())
 
 
 _SHARED_FILES = ['common.css', 'common.js', 'utils.js']

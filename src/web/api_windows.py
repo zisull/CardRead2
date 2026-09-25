@@ -414,26 +414,31 @@ class WindowsMixin:
 
     def clear_logs(self) -> Dict[str, Any]:
         try:
-            import sys as _sys
-            from loguru import logger as _logger
-            log_file = os.path.join(self._appdata_dir, 'cardread_web.log')
-            error_log = os.path.join(self._appdata_dir, 'cardread_error.log')
+            from src.utils.logging_config import (
+                LOG_FILE_NAME, ERROR_LOG_FILE_NAME, configure_logging,
+            )
+            log_file = os.path.join(self._appdata_dir, LOG_FILE_NAME)
+            error_log = os.path.join(self._appdata_dir, ERROR_LOG_FILE_NAME)
+            skipped = []
             # loguru 持续占用日志文件句柄，Windows 上直接 open('w') 会 PermissionError
-            # 方案：先 complete() 刷新缓冲，remove() 释放句柄，清空文件，再重新 add handler
-            _logger.complete()
-            _logger.remove()
+            # 方案：先 complete() 刷新缓冲，remove() 释放句柄，清空文件，再按统一配置重建 handler
+            logger.complete()
+            logger.remove()
             for f in [log_file, error_log]:
                 if os.path.isfile(f):
                     try:
                         with open(f, 'w', encoding='utf-8') as fh:
                             fh.write('')
                     except OSError as e:
-                        logger.warning(f"清空日志文件失败（将跳过）: {f}: {e}")
-            # 重新添加 handler（与 main.setup_logging 配置保持一致）
-            _logger.add(log_file, rotation="1 MB", retention="7 days", encoding="utf-8", level="DEBUG")
-            _logger.add(error_log, rotation="512 KB", retention="30 days", encoding="utf-8", level="ERROR")
-            if _sys.stderr is not None:
-                _logger.add(_sys.stderr, level="INFO")
-            return {'success': True}
+                        skipped.append(f"{f}: {e}")
+            # 无论清空是否全部成功，都恢复 handler（配置与启动时同源，不再各自硬编码）
+            configure_logging(self._appdata_dir)
+            logger.info("日志已清空")
+            return {'success': True, 'skipped': skipped}
         except Exception as e:
+            from src.utils.logging_config import configure_logging
+            try:
+                configure_logging(self._appdata_dir)
+            except Exception:
+                pass
             return {'success': False, 'error': str(e)}

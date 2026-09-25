@@ -142,7 +142,9 @@ class BaseChapterParser(ABC):
                 'html': self._get_html_for_cache(),
                 'titles': self._chapter_titles,
             }
-            with gzip.open(cache_path, 'wt', encoding='utf-8') as f:
+            # 实测 1.8MB 中文缓存：9 级 229ms/0.61MB，1 级 25ms/0.78MB。
+            # 压缩发生在"刚解析完全书"的路径上，解压两档都只要几毫秒，故取 1 级
+            with gzip.open(cache_path, 'wt', encoding='utf-8', compresslevel=1) as f:
                 json.dump(data, f, ensure_ascii=False)
         except (OSError, IOError) as e:
             logger.warning(f"缓存文件写入失败: {cache_path}: {e}")
