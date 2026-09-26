@@ -659,6 +659,73 @@ class TestUpdaterEndToEnd:
         assert u.status()['error'] == '已取消'
 
 
+class TestSwapAndRelaunch:
+    """换身是唯一会动到本体文件的步骤：任何一步失败都必须把旧本体放回去"""
+
+    def _ready(self, tmp_path, staged=b'NEW'):
+        work = tmp_path / 'update'
+        work.mkdir(parents=True, exist_ok=True)
+        exe = work / 'CardRead2.exe'
+        exe.write_bytes(b'OLD')
+        new_bin = work / 'new.bin'
+        new_bin.write_bytes(staged)
+        u = updater.Updater(str(work), '0.0.4', str(exe), prefixes=[''], frozen=True)
+        u._patch(phase=updater.READY)
+        u._plan = updater.build_install_plan(str(exe), str(new_bin), platform_name='windows-x64')
+        return u, exe, work / 'CardRead2.exe.old'
+
+    def test_swap_happy_path(self, tmp_path, monkeypatch):
+        launched = []
+        monkeypatch.setattr(updater.subprocess, 'Popen', lambda argv, **kw: launched.append(argv))
+        u, exe, backup = self._ready(tmp_path)
+        r = u.apply()
+        assert r['success'] is True
+        assert exe.read_bytes() == b'NEW'
+        assert backup.read_bytes() == b'OLD'
+        assert launched == [[str(exe)]]
+        assert u.status()['phase'] == updater.INSTALLING
+
+    def test_copy_failure_rolls_back(self, tmp_path, monkeypatch):
+        def boom(*a, **kw):
+            raise OSError('disk full')
+        monkeypatch.setattr(updater.shutil, 'copyfile', boom)
+        u, exe, _ = self._ready(tmp_path)
+        r = u.apply()
+        assert r['success'] is False
+        assert r['error'] == 'disk full'
+        assert exe.read_bytes() == b'OLD'          # 本体还在，只是没换成新的
+        assert '写入新版本失败' in u.status()['error']
+        assert u.status()['phase'] == updater.FAILED
+
+    def test_relaunch_failure_restores_old(self, tmp_path, monkeypatch):
+        def boom(*a, **kw):
+            raise OSError('spawn failed')
+        monkeypatch.setattr(updater.subprocess, 'Popen', boom)
+        u, exe, backup = self._ready(tmp_path)
+        assert u.apply()['success'] is False
+        assert exe.read_bytes() == b'OLD'
+        assert not backup.exists()
+        assert '回滚' in u.status()['error']
+
+    def test_stale_backup_gets_replaced(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(updater.subprocess, 'Popen', lambda *a, **kw: None)
+        u, exe, backup = self._ready(tmp_path)
+        backup.write_bytes(b'ANCIENT')             # 上次换身崩溃留下的残骸
+        assert u.apply()['success'] is True
+        assert backup.read_bytes() == b'OLD'
+
+    def test_dev_mode_refuses_to_swap(self, tmp_path):
+        work = tmp_path / 'update'
+        work.mkdir(parents=True, exist_ok=True)
+        exe = work / 'python.exe'
+        exe.write_bytes(b'INTERPRETER')
+        u = updater.Updater(str(work), '0.0.4', str(exe), prefixes=[''], frozen=False)
+        u._patch(phase=updater.READY)
+        u._plan = updater.build_install_plan(str(exe), str(exe), platform_name='windows-x64')
+        assert u.apply()['success'] is False
+        assert exe.read_bytes() == b'INTERPRETER'
+
+
 class TestCleanupBackup:
     def test_removes_existing_backup(self, tmp_path):
         exe = tmp_path / 'CardRead2.exe'
