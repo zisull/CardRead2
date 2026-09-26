@@ -8,7 +8,7 @@ from typing import Dict, Any
 APP_NAME = "Cardread Pro"
 APP_DISPLAY_NAME = "Cardread Pro"
 APP_AUTHOR = "zisull"
-APP_VERSION = "0.0.1"
+APP_VERSION = "0.0.4"
 COPYRIGHT = "zisull@qq.com"
 
 # 作者信息（说明页"作者"卡片内容，完全自定义）

@@ -1,6 +1,6 @@
 [project]
 name = "cardread"
-version = "0.0.1"
+version = "0.0.4"
 description = "紫苏小说阅读器 - 本地电子书阅读工具"
 license = "GPL-3.0-only"
 requires-python = ">=3.10"
