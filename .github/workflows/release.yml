@@ -1,10 +1,12 @@
 name: Build & Release
 
-# 只由「发布 release」驱动：之前同时挂了 push.tags，打 tag 与发布 release 会各跑一遍
-# 四平台构建（一次完整构建要几十分钟），纯属浪费。
+# 推 tag 即发布：build 四平台 → release 建 release（含各平台包 + latest.json）并一次性放出来。
+# 更新清单和产物在同一个作业里发布，不存在「release 已公开但 latest.json 还没挂上」的空窗。
+# workflow_dispatch 只出构建产物到 Actions 页，不碰 release。
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -194,18 +196,7 @@ jobs:
             ditto -c -k --sequesterRsrc --keepParent "dist/${{ matrix.artifact }}" "dist/${{ matrix.package }}"
           fi
 
-      - name: Determine upload mode
-        id: mode
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "target=artifact" >> "$GITHUB_OUTPUT"
-          else
-            echo "target=release" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Upload package as Artifact
-        if: steps.mode.outputs.target == 'artifact'
         uses: actions/upload-artifact@v4.6.2
         with:
           name: ${{ matrix.package }}
@@ -213,23 +204,15 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload package to Release
-        if: steps.mode.outputs.target == 'release'
-        uses: softprops/action-gh-release@v2.3.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          files: dist/${{ matrix.package }}
-          fail_on_unmatched_files: true
-          append_body: true
-          body: "## 构建产物\n"
-
-  # 自动更新的真相源：把各平台产物的 sha256/体积写成 latest.json 回传到同一个 release，
-  # 客户端只读 releases/latest/download/latest.json（静态资产，不受 API 匿名限流影响）
-  manifest:
-    name: Publish latest.json
+  # 发布只在这一个作业里发生：产物 + latest.json 先挂到草稿上，全部就位后再取消草稿。
+  # 这样外部看不到「release 已公开但清单还 404」的窗口——老版本客户端只读
+  # releases/latest/download/latest.json（静态资产，不受匿名 API 限流影响）。
+  # if 用 !cancelled()：个别平台构建失败时剩下的平台照常发；全失败时脚本因无产物而退出，
+  # 草稿根本不会被创建，也就不会推出一个谁都更新不了的版本。
+  release:
+    name: Publish release + latest.json
     needs: build
-    if: github.event_name != 'workflow_dispatch'
+    if: ${{ !cancelled() && github.event_name != 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -240,26 +223,45 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Collect release info and assets
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release view "$GITHUB_REF_NAME" --json body --jq '.body' > notes.md
-          gh release view "$GITHUB_REF_NAME" --json publishedAt --jq '.publishedAt' > published_at.txt
-          mkdir -p dist
-          gh release download "$GITHUB_REF_NAME" --dir dist --clobber
+      - name: Collect built packages
+        uses: actions/download-artifact@v4.3.0
+        with:
+          path: dist
+          pattern: 'CardRead2-*'
+          merge-multiple: true
+          # merge-multiple 是必需的：默认每个产物会落进 dist/<产物名>/ 子目录，
+          # 而 make_update_manifest.py 是在 dist/ 平铺找文件的
 
-      - name: Build manifest
+      - name: Build update manifest
         shell: bash
         run: |
+          set -euo pipefail
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME" 2>/dev/null || true
+          # 更新说明取 tag 的批注正文（git tag -a -m "标题" -m "正文"），没有就退回整条批注
+          git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME" > notes.md
+          [ -s notes.md ] || git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > notes.md
+          [ -s notes.md ] || printf '本版本更新内容见提交历史。\n' > notes.md
           python tools/make_update_manifest.py --dir dist --tag "$GITHUB_REF_NAME" \
             --out dist/latest.json --notes-file notes.md \
-            --published-at "$(cat published_at.txt)"
+            --published-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-      - name: Upload manifest
+      - name: Attach everything to a draft release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/latest.json --clobber
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --draft=true --title "$GITHUB_REF_NAME" --notes-file notes.md
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" \
+              --notes-file notes.md dist/*
+          fi
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false
 
