@@ -1,12 +1,11 @@
 name: Build & Release
 
+# 只由「发布 release」驱动：之前同时挂了 push.tags，打 tag 与发布 release 会各跑一遍
+# 四平台构建（一次完整构建要几十分钟），纯属浪费。
 on:
   release:
     types: [published]
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 
 permissions:
   contents: write
@@ -224,3 +223,43 @@ jobs:
           fail_on_unmatched_files: true
           append_body: true
           body: "## 构建产物\n"
+
+  # 自动更新的真相源：把各平台产物的 sha256/体积写成 latest.json 回传到同一个 release，
+  # 客户端只读 releases/latest/download/latest.json（静态资产，不受 API 匿名限流影响）
+  manifest:
+    name: Publish latest.json
+    needs: build
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Collect release info and assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --json body --jq '.body' > notes.md
+          gh release view "$GITHUB_REF_NAME" --json publishedAt --jq '.publishedAt' > published_at.txt
+          mkdir -p dist
+          gh release download "$GITHUB_REF_NAME" --dir dist --clobber
+
+      - name: Build manifest
+        shell: bash
+        run: |
+          python tools/make_update_manifest.py --dir dist --tag "$GITHUB_REF_NAME" \
+            --out dist/latest.json --notes-file notes.md \
+            --published-at "$(cat published_at.txt)"
+
+      - name: Upload manifest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/latest.json --clobber
+

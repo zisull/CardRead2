@@ -350,6 +350,8 @@ def main():
     
     api._window = window
 
+    api.start_update_watchdog()
+
     try:
         webview.start(debug=False)
     except Exception as e:

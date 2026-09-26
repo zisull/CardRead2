@@ -2228,7 +2228,276 @@ async function loadAppInfo() {
             }).join('');
         }
     } catch (e) { showToast('加载应用信息失败'); }
+    try { initUpdateUi(); } catch (e) { /* 更新徽标不影响主流程 */ }
 }
+
+// ── 自动更新 UI ──
+// 徽标是「被动」的：后端每 24h 静默检查，发现新版才 evaluate_js 推给前端（onUpdateNotify），
+// 前端不做常驻轮询；只有面板打开或任务进行中才轮询 get_update_status() 拿进度。
+const _UP_TEXT = {
+    idle: '尚未检查',
+    checking: '正在检查更新…',
+    available: '发现新版本',
+    up_to_date: '已是最新版本',
+    benchmarking: '正在测速，挑选最快的源…',
+    downloading: '正在下载更新…',
+    verifying: '正在校验下载内容…',
+    ready: '下载完成，可重启安装',
+    installing: '正在重启到新版本…',
+    failed: '更新失败'
+};
+const _UP_ACTIVE_PHASES = ['checking', 'benchmarking', 'downloading', 'verifying', 'installing'];
+let _upPanelEl = null;
+let _upPanelOpen = false;
+let _upPollTimer = null;
+let _upPolling = false;
+let _upTaskActive = false;
+let _upSrcSig = '';
+
+function _upBytes(n) {
+    n = Number(n) || 0;
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+    if (n >= 1024) return (n / 1024).toFixed(0) + ' KB';
+    return n + ' B';
+}
+
+function _upSpeed(bps) {
+    bps = Number(bps) || 0;
+    return bps > 0 ? _upBytes(bps) + '/s' : '';
+}
+
+function _upEta(sec) {
+    sec = Math.max(0, Math.round(Number(sec) || 0));
+    if (!sec) return '';
+    if (sec < 60) return sec + ' 秒';
+    const m = Math.floor(sec / 60);
+    return m < 60 ? m + ' 分 ' + (sec % 60) + ' 秒' : Math.floor(m / 60) + ' 小时';
+}
+
+function _upBadgeEl() {
+    const bar = document.querySelector('.status-bar');
+    if (!bar) return null;
+    let b = document.getElementById('updateBadge');
+    if (!b) {
+        b = document.createElement('span');
+        b.id = 'updateBadge';
+        b.className = 'update-badge hidden';
+        b.textContent = '↑ 新版';
+        b.addEventListener('click', function() { openUpdatePanel(false); });
+        bar.insertBefore(b, document.getElementById('versionText') || null);
+    }
+    return b;
+}
+
+function initUpdateUi() {
+    const badge = _upBadgeEl();
+    if (!badge) return;
+    const v = document.getElementById('versionText');
+    if (v && !v.dataset.updateBound) {
+        v.dataset.updateBound = '1';
+        v.title = '点击检查更新';
+        v.addEventListener('click', function() { openUpdatePanel(true); });
+    }
+    // 后端检查可能早于本页初始化完成，取一次现成状态补上徽标
+    _upRefresh();
+}
+
+function _upEnsurePanel() {
+    if (_upPanelEl) return _upPanelEl;
+    const box = document.createElement('div');
+    box.className = 'update-panel';
+    box.id = 'updatePanel';
+    box.innerHTML =
+        '<div class="up-head"><span class="up-title" id="upTitle">自动更新</span>' +
+        '<span class="up-close" id="upClose">✕</span></div>' +
+        '<div class="up-versions" id="upVersions"></div>' +
+        '<div class="up-notes hidden" id="upNotes"></div>' +
+        '<div class="up-sources hidden" id="upSources"></div>' +
+        '<div class="up-bar hidden" id="upBar"><div class="up-bar-fill" id="upBarFill"></div></div>' +
+        '<div class="up-meta" id="upMeta"></div>' +
+        '<div class="up-actions" id="upActions">' +
+        '<button class="up-btn primary" data-act="download">下载更新</button>' +
+        '<button class="up-btn primary" data-act="apply">重启安装</button>' +
+        '<button class="up-btn" data-act="check">重新检查</button>' +
+        '<button class="up-btn" data-act="cancel">取消</button>' +
+        '<button class="up-btn" data-act="open_page">打开下载页</button>' +
+        '</div>';
+    document.body.appendChild(box);
+    _upPanelEl = box;
+    box.querySelector('#upClose').addEventListener('click', closeUpdatePanel);
+    box.querySelectorAll('#upActions [data-act]').forEach(function(btn) {
+        btn.addEventListener('click', function() { updateAction(btn.dataset.act); });
+    });
+    return box;
+}
+
+function openUpdatePanel(check) {
+    _upEnsurePanel().classList.add('active');
+    _upPanelOpen = true;
+    _upStartPoll();
+    if (check) updateAction('check');
+    else _upRefresh();
+}
+
+function closeUpdatePanel() {
+    _upPanelOpen = false;
+    if (_upPanelEl) _upPanelEl.classList.remove('active');
+    _upStopPollIfNeeded();
+}
+
+function _upStartPoll() {
+    if (_upPollTimer) return;
+    _upPolling = true;
+    _upPollTimer = setInterval(_upRefresh, 1000);
+    _upRefresh();
+}
+
+function _upStopPollIfNeeded() {
+    if (_upPolling && !_upPanelOpen && !_upTaskActive) {
+        clearInterval(_upPollTimer);
+        _upPollTimer = null;
+        _upPolling = false;
+    }
+}
+
+async function _upRefresh() {
+    if (!api()) return;
+    try {
+        _upRender(await api().get_update_status());
+    } catch (e) { /* 关闭窗口等瞬时失败，下一轮再取 */ }
+}
+
+function _upApplyBadge(st) {
+    const b = _upBadgeEl();
+    if (!b) return;
+    const pct = Math.round((Number(st.progress) || 0) * 100);
+    let text = '', title = '';
+    if (st.phase === 'available') {
+        text = '↑ 新版';
+        title = '发现新版本 ' + (st.remote_version || '') + '，点击查看';
+    } else if (st.phase === 'ready') {
+        text = '↑ 待安装';
+        title = '新版本已下载，点击重启安装';
+    } else if (st.phase === 'benchmarking') {
+        text = '↓ 测速';
+        title = '正在比较各更新源速度，点击查看';
+    } else if (st.phase === 'downloading') {
+        text = '↓ ' + pct + '%';
+        title = '正在下载更新，点击查看进度';
+    } else if (st.phase === 'verifying') {
+        text = '↓ 校验';
+        title = '正在校验下载内容';
+    } else if (st.phase === 'failed') {
+        text = '↑ 失败';
+        title = '更新失败：' + (st.error || '') + '，点击查看';
+    }
+    b.classList.toggle('hidden', !text);
+    b.classList.toggle('warn', st.phase === 'failed');
+    if (!text) return;
+    b.textContent = text;
+    b.title = title;
+}
+
+function _upRender(st) {
+    if (!st) return;
+    _upTaskActive = _UP_ACTIVE_PHASES.indexOf(st.phase) >= 0;
+    _upApplyBadge(st);
+    if (!_upPanelOpen) { _upStopPollIfNeeded(); return; }
+
+    const el = function(id) { return document.getElementById(id); };
+    el('upTitle').textContent = _UP_TEXT[st.phase] || st.phase;
+
+    const versions = el('upVersions');
+    if (st.remote_version) {
+        versions.innerHTML = '当前 ' + escapeHtml(st.local_version || '') +
+            ' → 最新 <b>' + escapeHtml(st.remote_version) + '</b>';
+        versions.style.display = '';
+    } else {
+        versions.innerHTML = '';
+        versions.style.display = 'none';
+    }
+
+    const notes = el('upNotes');
+    notes.textContent = st.notes || '';
+    notes.classList.toggle('hidden', !st.notes);
+
+    const sources = el('upSources');
+    const list = st.sources || [];
+    const sig = list.map(function(s) { return s.label + ':' + s.speed; }).join('|') + '#' + st.source;
+    if (sig !== _upSrcSig) {
+        _upSrcSig = sig;
+        sources.innerHTML = list.map(function(s) {
+            const picked = s.label === st.source;
+            return '<div class="up-src' + (picked ? ' picked' : '') + '">' +
+                '<span class="up-src-name">' + (picked ? '● ' : '○ ') + escapeHtml(s.label) + '</span>' +
+                '<span class="up-src-speed">' + escapeHtml(_upSpeed(s.speed)) + '</span></div>';
+        }).join('');
+    }
+    sources.classList.toggle('hidden', !list.length);
+
+    const bar = el('upBar');
+    const showBar = ['benchmarking', 'downloading', 'verifying', 'ready'].indexOf(st.phase) >= 0;
+    bar.classList.toggle('hidden', !showBar);
+    el('upBarFill').style.width = Math.round((Number(st.progress) || 0) * 100) + '%';
+
+    const meta = el('upMeta');
+    if (st.error) {
+        meta.textContent = st.error;
+        meta.classList.add('error');
+    } else {
+        meta.classList.remove('error');
+        const bits = [];
+        if (st.total) bits.push(_upBytes(st.downloaded) + ' / ' + _upBytes(st.total));
+        const sp = _upSpeed(st.speed);
+        if (sp) bits.push(sp);
+        const eta = _upEta(st.eta);
+        if (eta) bits.push('剩余 ' + eta);
+        if (st.source) bits.push('来源 ' + st.source);
+        meta.textContent = bits.join(' · ');
+    }
+
+    const visible = {
+        download: st.phase === 'available',
+        apply: st.phase === 'ready',
+        check: st.phase === 'idle' || st.phase === 'up_to_date' || st.phase === 'failed',
+        cancel: st.phase === 'benchmarking' || st.phase === 'downloading',
+        open_page: st.phase === 'failed'
+    };
+    document.querySelectorAll('#upActions [data-act]').forEach(function(btn) {
+        btn.style.display = visible[btn.dataset.act] ? '' : 'none';
+    });
+    _upStopPollIfNeeded();
+}
+
+async function updateAction(act) {
+    if (!api()) return;
+    try {
+        let st = null;
+        if (act === 'check') st = await api().check_for_updates();
+        else if (act === 'download') st = await api().start_update_download();
+        else if (act === 'cancel') st = await api().cancel_update_download();
+        else if (act === 'apply') {
+            const r = await api().apply_update();
+            if (r && r.manual && r.url) api().open_url_in_browser(r.url);
+            else if (r && !r.success) showToast(r.error || '安装失败');
+            return;
+        } else if (act === 'open_page') {
+            await api().open_release_page();
+            return;
+        }
+        if (st) _upRender(st);
+        _upStartPoll();
+    } catch (e) {
+        showToast('更新操作失败');
+    }
+}
+
+// 后端 evaluate_js 的入口：静默检查有结果时推一次，前端不做常驻轮询
+window.onUpdateNotify = function(payload) {
+    if (!payload) return;
+    _upApplyBadge(payload);
+    if (_upPanelOpen) _upRender(payload);
+};
 
 document.addEventListener('click', e => { if (!e.target.closest('.context-menu')) hideContextMenu(); });
 document.addEventListener('click', function(e) {

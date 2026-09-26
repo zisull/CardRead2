@@ -21,23 +21,25 @@ from src.web.api_books import BooksMixin
 from src.web.api_notes import NotesMixin
 from src.web.api_reader import ReaderMixin
 from src.web.api_themes import ThemesMixin
+from src.web.api_update import UpdateMixin
 from src.web.api_windows import WindowsMixin
 
 from src.config import PREVIEW_CACHE_CAPACITY, COVER_CACHE_CAPACITY
 
 
-class Api(BooksMixin, NotesMixin, ReaderMixin, ThemesMixin, WindowsMixin):
+class Api(BooksMixin, NotesMixin, ReaderMixin, ThemesMixin, WindowsMixin, UpdateMixin):
     """pywebview API 类
 
     所有公共方法都可以被 JavaScript 调用。
     调用方式: await window.pywebview.api.method_name(args)
 
-    方法按职责拆分到五个 Mixin：
+    方法按职责拆分到六个 Mixin：
     - BooksMixin:   书架列表、封面、统计、导入/删除/重命名
     - NotesMixin:   便签增删改查、编辑窗口、桌面展示窗口
     - ReaderMixin:  打开书籍、章节导航、搜索、书签
     - ThemesMixin:  主题管理、自定义配色、布局、设置
     - WindowsMixin: 窗口控制、日志、应用信息
+    - UpdateMixin:  自动更新检测、测速下载、换身重启
     """
 
     def __init__(self):
@@ -77,6 +79,7 @@ class Api(BooksMixin, NotesMixin, ReaderMixin, ThemesMixin, WindowsMixin):
         self._search_index = SearchIndex(search_index_path)
 
         self._init_notes()
+        self._init_update()
 
         self._load_data()
 
