@@ -1,6 +1,6 @@
 name: Build & Release
 
-# 推 tag 即发布：build 四平台 → release 建 release（含各平台包 + latest.json）并一次性放出来。
+# 推 tag 即发布：build 三平台 → release 建 release（含各平台包 + latest.json）并一次性放出来。
 # 更新清单和产物在同一个作业里发布，不存在「release 已公开但 latest.json 还没挂上」的空窗。
 # workflow_dispatch 只出构建产物到 Actions 页，不碰 release。
 on:
@@ -26,10 +26,8 @@ jobs:
             platform: Linux
             artifact: CardRead2-Linux-x64
             package: CardRead2-Linux-x64.tar.gz
-          - os: macos-13
-            platform: macOS-x64
-            artifact: CardRead2-macOS-x64
-            package: CardRead2-macOS-x64.zip
+          # 不再构建 macOS Intel：GitHub 已下线 macos-13 类 Intel runner，作业会永远排队
+          # （v0.0.4 那次就卡死在这一个任务上，把 release 一起拖没）。Intel Mac 走下载页。
           - os: macos-14
             platform: macOS-arm64
             artifact: CardRead2-macOS-arm64

@@ -20,7 +20,6 @@ REPO = 'zisull/CardRead2'
 PACKAGES = {
     'windows-x64': 'CardRead2-Windows-x64.zip',
     'linux-x64': 'CardRead2-Linux-x64.tar.gz',
-    'macos-x64': 'CardRead2-macOS-x64.zip',
     'macos-arm64': 'CardRead2-macOS-arm64.zip',
 }
 

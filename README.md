@@ -12,7 +12,7 @@
 |------|------|------|
 | Windows x64 | `CardRead2-Windows-x64.exe` | 单文件，双击即用 |
 | Linux x64 | `CardRead2-Linux-x64` | 需安装 `webkit2gtk` |
-| macOS Intel | `CardRead2-macOS-x64` | Intel 芯片 Mac |
+| macOS Intel | `CardRead2-macOS-arm64` | 暂不提供 Intel 包（GitHub 已下线 Intel runner），Intel Mac 请从源码运行 |
 | macOS Apple Silicon | `CardRead2-macOS-arm64` | M1/M2/M3/M4 芯片 Mac |
 
 ### 从源码运行
@@ -512,9 +512,10 @@ CardRead2/
 git tag -a v0.0.6 -F notes.txt && git push --force-with-lease origin v0.0.6
 ```
 
-CI（`.github/workflows/release.yml`）随后构建四平台，把各包的 sha256/体积写成
-`latest.json`，与四个平台包一起挂到草稿 release 上，全部就位才取消草稿——所以外部
-看不到「release 已公开但清单还 404」的窗口。个别平台构建失败时，其余平台照常发布。
+CI（`.github/workflows/release.yml`）随后构建三个平台（Windows / Linux / Apple Silicon），
+把各包的 sha256/体积写成 `latest.json`，与平台包一起挂到草稿 release 上，全部就位才取消
+草稿——所以外部看不到「release 已公开但清单还 404」的窗口。个别平台构建失败时，其余平台
+照常发布，只是清单里少了那一格（客户端会提示「没有适配当前平台的产物」）。
 
 客户端读 `releases/latest/download/latest.json`（静态资产，不受匿名 API 限流影响），
 对 GitHub 直连与镜像前缀逐个测速、挑最快的一条下载，支持断点续传与 SHA256 校验；
