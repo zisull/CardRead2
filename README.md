@@ -502,6 +502,27 @@ CardRead2/
 
 ---
 
+## 发版与自动更新
+
+推 tag 即发版，不需要去网页上点发布：
+
+```bash
+# 1. 改版本号（两处都要改）：src/config.py 的 APP_VERSION、pyproject.toml 的 version
+# 2. 用批注 tag 写更新说明——正文会原样进 latest.json，显示在客户端的更新面板里
+git tag -a v0.0.6 -F notes.txt && git push --force-with-lease origin v0.0.6
+```
+
+CI（`.github/workflows/release.yml`）随后构建四平台，把各包的 sha256/体积写成
+`latest.json`，与四个平台包一起挂到草稿 release 上，全部就位才取消草稿——所以外部
+看不到「release 已公开但清单还 404」的窗口。个别平台构建失败时，其余平台照常发布。
+
+客户端读 `releases/latest/download/latest.json`（静态资产，不受匿名 API 限流影响），
+对 GitHub 直连与镜像前缀逐个测速、挑最快的一条下载，支持断点续传与 SHA256 校验；
+Windows 走原地换身，macOS 只跳下载页（产物是 .app 目录）。镜像列表存在配置项
+`update_mirrors`（默认直连 + 三个国内反代），接口已备好但还没开放到设置界面。
+
+---
+
 ## 许可证
 
 GPL-3.0
