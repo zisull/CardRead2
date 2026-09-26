@@ -137,11 +137,12 @@ class TestChapterParser:
 class TestCachePrune:
     """cache 目录原本只增不减：删书/改名后旧路径的 .cache.gz 永远不会再被命中"""
 
-    def test_cache_path_is_stable_for_relative_input(self, tmp_dir, sample_txt):
+    def test_cache_path_is_stable_for_unnormalized_input(self, tmp_dir, sample_txt):
+        """路径里的 '.' 段不该改变缓存文件名（os.path.abspath 会折叠掉）"""
         from src.core.base_chapter_parser import cache_path_for
         cache_dir = os.path.join(tmp_dir, 'cache')
         a = cache_path_for(sample_txt, cache_dir)
-        b = cache_path_for(os.path.relpath(sample_txt), cache_dir)
+        b = cache_path_for(os.path.join(tmp_dir, '.', 'test_book.txt'), cache_dir)
         assert a == b
         assert a.endswith('.cache.gz')
 

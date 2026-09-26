@@ -38,4 +38,12 @@ jobs:
 
       - name: Run tests
         shell: bash
-        run: python -m pytest tests/ -q
+        run: |
+          python -m pytest tests/ -q --junitxml=results.xml
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            # 失败详情写成 annotations：日志接口要鉴权，annotations 不用，
+            # 否则外部只能看到「exit code 1」这种无信息结论
+            python tools/ci_annotate.py results.xml || true
+          fi
+          exit $status
