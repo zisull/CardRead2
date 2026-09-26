@@ -13,6 +13,7 @@ import zipfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import HTTPError
 
 import pytest
 
@@ -290,7 +291,8 @@ class TestManifest:
             return (200, body, {})
 
         monkeypatch.setattr(updater, '_http_get', fake)
-        data = updater.fetch_manifest(['https://ghproxy.net/', ''])
+        data, reason = updater.fetch_manifest(['https://ghproxy.net/', ''])
+        assert reason == updater.OK
         assert data['version'] == '0.0.5'
         assert data['_source'] == 'direct'
         assert len(calls) == 2
@@ -298,12 +300,40 @@ class TestManifest:
     def test_fetch_manifest_rejects_bad_json(self, monkeypatch):
         monkeypatch.setattr(updater, '_http_get',
                             lambda url, **kw: (200, b'<html>rate limited</html>', {}))
-        assert updater.fetch_manifest(['']) is None
+        data, reason = updater.fetch_manifest([''])
+        assert data is None and reason == updater.BAD_MANIFEST
 
     def test_fetch_manifest_requires_version(self, monkeypatch):
         monkeypatch.setattr(updater, '_http_get',
                             lambda url, **kw: (200, json.dumps({'notes': 'x'}).encode(), {}))
-        assert updater.fetch_manifest(['']) is None
+        data, reason = updater.fetch_manifest([''])
+        assert data is None and reason == updater.BAD_MANIFEST
+
+    def test_fetch_manifest_404_means_not_published(self, monkeypatch):
+        def fake(url, **kw):
+            raise HTTPError(url, 404, 'Not Found', {}, None)
+
+        monkeypatch.setattr(updater, '_http_get', fake)
+        data, reason = updater.fetch_manifest(['', 'https://ghproxy.net/'])
+        assert data is None and reason == updater.NOT_FOUND
+
+    def test_fetch_manifest_prefers_not_found_over_timeout(self, monkeypatch):
+        def fake(url, **kw):
+            if url.startswith('https://ghproxy'):
+                raise OSError('timed out')
+            raise HTTPError(url, 404, 'Not Found', {}, None)
+
+        monkeypatch.setattr(updater, '_http_get', fake)
+        data, reason = updater.fetch_manifest(['https://ghproxy.net/', ''])
+        assert data is None and reason == updater.NOT_FOUND
+
+    def test_fetch_manifest_all_unreachable_is_network(self, monkeypatch):
+        def fake(url, **kw):
+            raise OSError('connection refused')
+
+        monkeypatch.setattr(updater, '_http_get', fake)
+        data, reason = updater.fetch_manifest(['', 'https://ghproxy.net/'])
+        assert data is None and reason == updater.NETWORK
 
 
 class TestDownloadResume:
@@ -408,7 +438,7 @@ class TestUpdaterState:
 
     def test_check_available(self, monkeypatch, work_dir):
         monkeypatch.setattr(updater, 'fetch_manifest',
-                            lambda prefixes: _manifest_for('https://x/y.zip', b'z'))
+                            lambda prefixes: (_manifest_for('https://x/y.zip', b'z'), updater.OK))
         u = self._updater(work_dir)
         st = u.check()
         assert st['phase'] == updater.AVAILABLE
@@ -418,21 +448,36 @@ class TestUpdaterState:
 
     def test_check_up_to_date(self, monkeypatch, work_dir):
         manifest = _manifest_for('https://x/y.zip', b'z', version='0.0.4')
-        monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: manifest)
+        monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: (manifest, updater.OK))
         st = self._updater(work_dir).check()
         assert st['phase'] == updater.UP_TO_DATE
         assert st['available'] is False
 
-    def test_check_failure_is_silent(self, monkeypatch, work_dir):
-        monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: None)
+    def test_check_not_published_has_its_own_phase(self, monkeypatch, work_dir):
+        monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: (None, updater.NOT_FOUND))
         st = self._updater(work_dir).check()
-        assert st['phase'] == updater.IDLE
-        assert st['error'] == '无法连接更新源'
+        assert st['phase'] == updater.CHECK_FAILED
+        assert '尚未发布' in st['error']
+        assert st['checked_at'] > 0
+
+    def test_check_network_failure_wording(self, monkeypatch, work_dir):
+        monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: (None, updater.NETWORK))
+        st = self._updater(work_dir).check()
+        assert st['phase'] == updater.CHECK_FAILED
+        assert '无法连接' in st['error']
+
+    def test_download_after_failed_check_reuses_reason(self, monkeypatch, work_dir):
+        monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: (None, updater.NOT_FOUND))
+        u = self._updater(work_dir)
+        u.check()
+        st = u.start_download()
+        assert st['phase'] == updater.FAILED
+        assert '尚未发布' in st['error']
 
     def test_check_disabled_manifest(self, monkeypatch, work_dir):
         manifest = _manifest_for('https://x/y.zip', b'z')
         manifest['enabled'] = False
-        monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: manifest)
+        monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: (manifest, updater.OK))
         assert self._updater(work_dir).check()['phase'] == updater.IDLE
 
     def test_check_async_returns_immediately(self, monkeypatch, work_dir):
@@ -443,7 +488,7 @@ class TestUpdaterState:
             calls.append(prefixes)
             started.set()
             release.wait(timeout=5)
-            return _manifest_for('https://x/y.zip', b'z')
+            return _manifest_for('https://x/y.zip', b'z'), updater.OK
 
         monkeypatch.setattr(updater, 'fetch_manifest', fake_fetch)
         u = self._updater(work_dir)
@@ -462,12 +507,32 @@ class TestUpdaterState:
 
     def test_check_async_noop_while_downloading(self, monkeypatch, work_dir):
         calls = []
-        monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: calls.append(1))
+
+        def spy(prefixes):
+            calls.append(prefixes)
+            return (None, updater.NETWORK)
+
+        monkeypatch.setattr(updater, 'fetch_manifest', spy)
         u = self._updater(work_dir)
         u._patch(phase=updater.DOWNLOADING)
         assert u.check_async()['phase'] == updater.DOWNLOADING
         time.sleep(0.2)
         assert calls == []
+
+    def test_check_async_reruns_after_check_failed(self, monkeypatch, work_dir):
+        calls = []
+
+        def spy(prefixes):
+            calls.append(prefixes)
+            return (None, updater.NETWORK)
+
+        monkeypatch.setattr(updater, 'fetch_manifest', spy)
+        u = self._updater(work_dir)
+        u.check()                      # 一次失败 → check_failed
+        assert u.status()['phase'] == updater.CHECK_FAILED
+        u.check_async()
+        time.sleep(0.4)
+        assert len(calls) == 2         # 失败态不该把「重新检查」也挡掉
 
     def test_download_without_manifest_fails(self, work_dir):
         st = self._updater(work_dir).start_download()
@@ -475,7 +540,7 @@ class TestUpdaterState:
 
     def test_download_without_platform_asset_fails(self, monkeypatch, work_dir):
         monkeypatch.setattr(updater, 'fetch_manifest',
-                            lambda prefixes: {'version': '0.0.9', 'assets': {}})
+                            lambda prefixes: ({'version': '0.0.9', 'assets': {}}, updater.OK))
         monkeypatch.setattr(updater, 'platform_key', lambda *a: 'windows-x64')
         u = self._updater(work_dir)
         u.check()
@@ -507,7 +572,7 @@ class TestUpdaterEndToEnd:
             manifest = _manifest_for(srv.url, raw)
             if mutate_manifest:
                 mutate_manifest(manifest)
-            monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: manifest)
+            monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: (manifest, updater.OK))
             monkeypatch.setattr(updater, 'platform_key', lambda *a: 'windows-x64')
             work = str(tmp_path / 'update')
             os.makedirs(work, exist_ok=True)
@@ -553,7 +618,7 @@ class TestUpdaterEndToEnd:
 
     def test_all_sources_dead_reports_failure(self, tmp_path, monkeypatch, no_proxy):
         manifest = _manifest_for('http://127.0.0.1:1/nope.zip', PAYLOAD)
-        monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: manifest)
+        monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: (manifest, updater.OK))
         monkeypatch.setattr(updater, 'platform_key', lambda *a: 'windows-x64')
         work = str(tmp_path / 'update')
         os.makedirs(work, exist_ok=True)
@@ -568,7 +633,7 @@ class TestUpdaterEndToEnd:
 
     def test_cancel_during_download_returns_to_idle(self, tmp_path, monkeypatch):
         manifest = _manifest_for('http://127.0.0.1:1/x.zip', PAYLOAD)
-        monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: manifest)
+        monkeypatch.setattr(updater, 'fetch_manifest', lambda prefixes: (manifest, updater.OK))
         monkeypatch.setattr(updater, 'platform_key', lambda *a: 'windows-x64')
         monkeypatch.setattr(updater, 'rank_sources',
                             lambda url, prefixes, probe=None, timeout=6.0:

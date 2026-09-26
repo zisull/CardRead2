@@ -19,7 +19,7 @@ import tarfile
 import threading
 import time
 import zipfile
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
 
@@ -215,26 +215,54 @@ def _probe_source(url: str, timeout: float = _PROBE_TIMEOUT, nbytes: int = _PROB
             'first_byte': elapsed}
 
 
-def fetch_manifest(prefixes: List[str]) -> Optional[Dict[str, Any]]:
-    """按给定顺序尝试取 manifest（几十 KB，不做测速，命中即止）"""
+# fetch_manifest 的取回结果分类：三种失败要分开告诉用户，「没发布」和「连不上」的处置完全不同
+OK = ''
+NOT_FOUND = 'not_found'
+NETWORK = 'network'
+BAD_MANIFEST = 'bad_manifest'
+
+
+def fetch_manifest(prefixes: List[str]) -> Tuple[Optional[Dict[str, Any]], str]:
+    """按给定顺序尝试取 manifest（几十 KB，不做测速，命中即止）
+
+    返回 (manifest, 失败原因)，原因见 NOT_FOUND / NETWORK / BAD_MANIFEST，成功时为 OK。
+    「源可达但清单没发布」和「根本连不上」要分开报，否则用户看到的全是"无法连接"。
+    """
+    reasons: List[str] = []
     for prefix in prefixes:
         url = with_prefix(MANIFEST_URL, prefix)
         try:
             status, body, _ = _http_get(url, timeout=_PROBE_TIMEOUT, size_limit=512 * 1024)
-        except (HTTPError, URLError, OSError, ValueError) as e:
+        except HTTPError as e:
+            code = getattr(e, 'code', 0)
+            reasons.append(NOT_FOUND if code == 404 else NETWORK)
+            logger.debug(f"manifest 拉取失败 {url}: HTTP {code}")
+            continue
+        except (URLError, OSError, ValueError) as e:
+            reasons.append(NETWORK)
             logger.debug(f"manifest 拉取失败 {url}: {type(e).__name__}: {e}")
             continue
+        if status == 404:
+            reasons.append(NOT_FOUND)
+            continue
         if status != 200:
+            reasons.append(NETWORK)
             continue
         try:
             data = json.loads(body.decode('utf-8', 'replace'))
         except json.JSONDecodeError as e:
             logger.warning(f"manifest 解析失败 {url}: {e}")
+            reasons.append(BAD_MANIFEST)
             continue
         if isinstance(data, dict) and data.get('version'):
             data['_source'] = prefix or 'direct'
-            return data
-    return None
+            return data, OK
+        reasons.append(BAD_MANIFEST)
+    # 只要有一个源明确回了 404，就说明链路是通的、清单确实没发布，这比"连不上"更有指导性
+    for pref in (NOT_FOUND, BAD_MANIFEST):
+        if pref in reasons:
+            return None, pref
+    return None, NETWORK
 
 
 # ── 状态机 ──
@@ -249,6 +277,14 @@ VERIFYING = 'verifying'
 READY = 'ready'
 INSTALLING = 'installing'
 FAILED = 'failed'
+# 检查没跑成（区别于下载失败）：不弹徽标打扰，只在用户点开面板时说明原因
+CHECK_FAILED = 'check_failed'
+
+CHECK_ERRORS = {
+    NOT_FOUND: '更新清单尚未发布：GitHub Releases 里还没有 latest.json',
+    BAD_MANIFEST: '更新清单内容异常，无法解析',
+    NETWORK: '无法连接更新源，请检查网络或代理后重试',
+}
 
 
 class Updater:
@@ -325,11 +361,13 @@ class Updater:
         return self.status()
 
     def check(self) -> Dict[str, Any]:
-        """静默检查：任何失败都不抛，只记日志并把 phase 置回 idle"""
+        """静默检查：任何失败都不抛，只记日志和状态"""
         self._patch(phase=CHECKING, error='')
-        manifest = fetch_manifest(self._prefixes)
+        manifest, reason = fetch_manifest(self._prefixes)
         if not manifest:
-            self._patch(phase=IDLE, error='无法连接更新源')
+            logger.info(f"更新检查未成功: {reason}")
+            self._patch(phase=CHECK_FAILED, error=CHECK_ERRORS.get(reason, CHECK_ERRORS[NETWORK]),
+                        checked_at=time.time(), remote_version='', available=False)
             return self.status()
         if manifest.get('enabled') is False:
             logger.info('更新源已禁用（manifest.enabled=false）')
@@ -354,7 +392,9 @@ class Updater:
 
     def start_download(self) -> Dict[str, Any]:
         if not self._manifest:
-            self._patch(phase=FAILED, error='尚未获取到更新信息，请先检查更新')
+            # 检查就没成时别报「请先检查更新」——用户刚点过检查，要给他真实原因
+            reason = self._st.get('error') if self._st.get('phase') == CHECK_FAILED else ''
+            self._patch(phase=FAILED, error=reason or '尚未获取到更新信息，请先检查更新')
             return self.status()
         with self._lock:
             if self._st['phase'] in (DOWNLOADING, VERIFYING, BENCHMARKING, INSTALLING):

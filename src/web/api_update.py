@@ -103,7 +103,9 @@ class UpdateMixin:
         # ensure_ascii 保持默认 True：非 ASCII 全转义后才是可拼进 JS 源码的安全字面量
         payload = json.dumps({'phase': st['phase'],
                               'remote_version': st['remote_version'],
-                              'local_version': st['local_version']})
+                              'local_version': st['local_version'],
+                              # 面板开着时推送要能顶掉上一行文案，否则错误信息会消失
+                              'error': st['error']})
         try:
             window.evaluate_js('if (window.onUpdateNotify) onUpdateNotify(%s);' % payload)
         except Exception as e:
